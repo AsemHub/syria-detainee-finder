@@ -2,20 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 142 76% 36%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 142 76% 46%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+
+    --accent: 142 76% 46%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 142 76% 46%;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom hover styles */
+@layer components {
+  .hover-effect {
+    @apply hover:text-[#2D5A27] dark:hover:text-[#4CAF50] transition-colors duration-200;
+  }
+  
+  .button-hover {
+    @apply hover:bg-[#2D5A27] dark:hover:bg-[#4CAF50] hover:text-white transition-colors duration-200;
+  }
+  
+  .link-hover {
+    @apply hover:text-[#2D5A27] dark:hover:text-[#4CAF50] hover:underline transition-colors duration-200;
+  }
+
+  .primary-button {
+    @apply bg-[#2D5A27] dark:bg-[#4CAF50] text-white hover:bg-[#1B4119] dark:hover:bg-[#388E3C] transition-colors duration-200;
+  }
+
+  .secondary-button {
+    @apply bg-white dark:bg-[#1E1E1E] text-[#2D5A27] dark:text-[#4CAF50] border border-[#2D5A27] dark:border-[#4CAF50] hover:bg-[#2D5A27] dark:hover:bg-[#4CAF50] hover:text-white transition-colors duration-200;
+  }
 }

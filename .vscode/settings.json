@@ -1,0 +1,5 @@
+{
+  "css.validate": false,
+  "tailwindCSS.validate": true,
+  "css.lint.unknownAtRules": "ignore"
+}
