@@ -1,21 +1,25 @@
-import { SubmitDetaineeForm } from "@/components/forms/submit-detainee-form";
+'use client'
+
+import SubmissionForm from "@/components/forms/submission-form"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function SubmitPage() {
   return (
     <main className="container mx-auto py-8">
       <div className="max-w-3xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Submit Detainee Information</h1>
+        <div className="mb-8 text-right">
+          <h1 className="text-3xl font-bold mb-2">تقديم معلومات عن معتقل</h1>
           <p className="text-muted-foreground">
-            Use this form to submit information about a detained person. All information
-            will be reviewed and verified before being made public.
+            استخدم هذا النموذج لتقديم معلومات عن شخص معتقل. سيتم مراجعة جميع المعلومات والتحقق منها قبل نشرها.
           </p>
         </div>
         
-        <div className="bg-card p-6 rounded-lg shadow-sm">
-          <SubmitDetaineeForm />
-        </div>
+        <Card>
+          <CardContent className="p-6">
+            <SubmissionForm />
+          </CardContent>
+        </Card>
       </div>
     </main>
-  );
+  )
 }
