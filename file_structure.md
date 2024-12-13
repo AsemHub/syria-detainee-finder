@@ -12,19 +12,28 @@ syria-detainee-finder/
 ├── public/
 ├── src/
 │   ├── app/
+│   │   ├── search/
+│   │   ├── submit/
+│   │   ├── bulk-upload/
+│   │   ├── about/
+│   │   └── privacy/
 │   ├── components/
-│   │   ├── auth/
-│   │   └── ui/
+│   │   ├── ui/
+│   │   ├── form/
+│   │   ├── layout/
+│   │   └── search/
 │   ├── hooks/
 │   ├── lib/
-│   │   └── auth/
-│   ├── middleware.ts
+│   │   └── supabase/
+│   ├── middleware/
 │   ├── styles/
 │   ├── test/
 │   ├── types/
 │   └── utils/
 ├── supabase/
-│   └── functions/
+│   ├── functions/
+│   ├── triggers/
+│   └── policies/
 ├── README.md
 ├── components.json
 ├── eslint.config.mjs
@@ -41,9 +50,48 @@ syria-detainee-finder/
 ├── tailwind.config.ts
 ├── translation_plan.md
 └── tsconfig.json
-```
 
-## Directory Overview
+## Directory Overview (Updated)
+
+### `/src/app` (Current Structure)
+- `/search`: Search functionality
+- `/submit`: Submission forms
+- `/bulk-upload`: CSV upload handling
+- `/about`: About pages
+- `/privacy`: Privacy policy
+- Global layout and styling files
+
+### `/src/components`
+- `/ui`: shadcn/ui components
+  - Custom themed components
+  - Shared UI elements
+- Form components
+- Layout components
+- Search components
+
+### `/src/hooks`
+- Supabase query hooks
+- Form handling hooks
+- State management hooks
+
+### `/src/lib`
+- Supabase client configuration
+- API utilities
+- Type definitions
+
+### `/src/middleware`
+- Rate limiting middleware
+- API middleware
+
+### `/src/utils`
+- Data transformation helpers
+- Validation utilities
+- Search helpers
+
+### `/supabase`
+- Edge Functions
+- Database triggers
+- RLS policies
 
 ### Root Directory
 - Configuration files for TypeScript, Next.js, ESLint, Jest, and other tools
@@ -51,54 +99,10 @@ syria-detainee-finder/
 - Package management files (package.json, package-lock.json)
 - Components configuration (components.json) for shadcn/ui
 
-### `/src`
-- Main source code directory
-
-#### `/src/app`
-- Next.js 14 App Router pages and layouts
-- API routes and server components
-
-#### `/src/components`
-- Reusable React components
-- UI components using shadcn/ui
-- Authentication components (sign-in, sign-up forms)
-
-#### `/src/hooks`
-- Custom React hooks for state management and functionality
-
-#### `/src/lib`
-- Shared libraries and utilities
-- Authentication context and utilities
-
-#### `/src/middleware.ts`
-- Next.js middleware for routing and authentication
-
-#### `/src/styles`
-- Global styles and Tailwind CSS configurations
-
-#### `/src/test`
-- Test utilities and setup files
-- Component and integration tests
-
-#### `/src/types`
-- TypeScript type definitions
-- Shared interfaces and types
-
-#### `/src/utils`
-- Utility functions and helpers
-- Helper functions for testing
-
-### `/supabase`
-- Supabase Edge Functions
-- Serverless API implementations
-
-### `/public`
-- Static assets and files
-- Images and icons
-
 ### Other Directories
 - `.next/`: Next.js build output
 - `.swc/`: SWC compiler cache
 - `.vscode/`: VS Code configuration
 - `coverage/`: Test coverage reports
 - `node_modules/`: Project dependencies
+- `public/`: Static assets and files

@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { Menu } from "lucide-react"
-import { useState } from "react"
-import { ModeToggle } from "@/components/mode-toggle"
+import Link from 'next/link'
+import { Menu } from 'lucide-react'
+import { useState } from 'react'
+import { ModeToggle } from '@/components/mode-toggle'
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -47,7 +47,9 @@ export function Header() {
               About
             </Link>
           </nav>
-          <ModeToggle />
+          <div className="flex items-center space-x-4">
+            <ModeToggle />
+          </div>
         </div>
 
         {/* Mobile Navigation */}
@@ -58,7 +60,7 @@ export function Header() {
             className="p-2 hover:bg-accent rounded-md"
             aria-label="Toggle menu"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-5 w-4" />
           </button>
         </div>
       </div>

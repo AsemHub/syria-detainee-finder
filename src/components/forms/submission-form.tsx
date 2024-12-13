@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -5,6 +7,9 @@ import * as z from 'zod'
 import { format } from 'date-fns'
 import { ar } from 'date-fns/locale'
 import { CalendarIcon } from '@radix-ui/react-icons'
+import { useToast } from '@/components/ui/use-toast'
+import { useRecaptcha } from '@/hooks/use-recaptcha'
+import { DetaineeSubmissionFormData } from '@/lib/types/forms'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -31,9 +36,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
-const submissionSchema = z.object({
+const detaineeSubmissionSchema = z.object({
   detaineeInfo: z.object({
     full_name_ar: z.string().min(2, 'الاسم مطلوب'),
     full_name_en: z.string().optional(),
@@ -41,80 +45,99 @@ const submissionSchema = z.object({
     place_of_birth_ar: z.string().optional(),
     place_of_birth_en: z.string().optional(),
     gender: z.enum(['male', 'female', 'other']),
-    nationality: z.string().min(2, 'الجنسية مطلوبة'),
+    nationality: z.enum(['syrian', 'palestinian', 'other']),
     detention_date: z.date(),
     detention_location_ar: z.string().min(2, 'مكان الاعتقال مطلوب'),
     detention_location_en: z.string().optional(),
     last_seen_date: z.date().optional(),
     last_seen_location_ar: z.string().optional(),
     last_seen_location_en: z.string().optional(),
-    additional_info_ar: z.string().optional(),
-    additional_info_en: z.string().optional(),
+    notes: z.string().optional(),
   }),
   submitterInfo: z.object({
-    submitter_name: z.string().min(2, 'اسم المقدم مطلوب'),
-    submitter_email: z.string().email('البريد الإلكتروني غير صالح'),
-    submitter_phone: z.string().optional(),
-    submitter_relation: z.string().min(2, 'العلاقة بالمعتقل مطلوبة'),
+    name: z.string().min(2, 'اسم المقدم مطلوب'),
+    relationship: z.string().min(2, 'العلاقة بالمعتقل مطلوبة'),
+    phone: z.string().optional(),
+    email: z.string().email('البريد الإلكتروني غير صالح'),
+    notes: z.string().optional(),
   }),
 })
 
-type SubmissionFormValues = z.infer<typeof submissionSchema>
+export default function SubmissionForm() {
+  const { toast } = useToast()
+  const { executeRecaptcha } = useRecaptcha()
+  const [loading, setLoading] = useState(false)
 
-export function SubmissionForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const supabase = createClientComponentClient()
-
-  const form = useForm<SubmissionFormValues>({
-    resolver: zodResolver(submissionSchema),
+  const form = useForm<DetaineeSubmissionFormData>({
+    resolver: zodResolver(detaineeSubmissionSchema),
     defaultValues: {
       detaineeInfo: {
         full_name_ar: '',
         full_name_en: '',
-        gender: 'male',
-        nationality: 'syrian',
+        gender: undefined,
+        nationality: undefined,
+        date_of_birth: undefined,
+        place_of_birth_ar: '',
+        place_of_birth_en: '',
+        detention_date: undefined,
+        detention_location_ar: '',
+        detention_location_en: '',
+        last_seen_date: undefined,
+        last_seen_location_ar: '',
+        last_seen_location_en: '',
+        notes: '',
       },
       submitterInfo: {
-        submitter_name: '',
-        submitter_email: '',
-        submitter_phone: '',
-        submitter_relation: '',
+        name: '',
+        relationship: '',
+        phone: '',
+        email: '',
+        notes: '',
       },
     },
   })
 
-  async function onSubmit(data: SubmissionFormValues) {
-    setIsSubmitting(true)
+  const onSubmit = async (data: DetaineeSubmissionFormData) => {
     try {
-      const { data: detainee, error: detaineeError } = await supabase
-        .from('detainees')
-        .insert({
-          ...data.detaineeInfo,
-          status: 'unknown',
-          verified: false,
-        })
-        .select()
-        .single()
+      setLoading(true)
 
-      if (detaineeError) throw detaineeError
+      // Execute reCAPTCHA
+      const recaptchaToken = await executeRecaptcha('submit_detainee')
 
-      const { error: submissionError } = await supabase
-        .from('submissions')
-        .insert({
-          detainee_id: detainee.id,
-          ...data.submitterInfo,
-        })
+      // Submit data to API
+      const response = await fetch('/api/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          recaptchaToken,
+        }),
+      })
 
-      if (submissionError) throw submissionError
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to submit')
+      }
 
-      // Reset form and show success message
+      // Show success message
+      toast({
+        title: 'تم إرسال البلاغ',
+        description: 'شكراً لك. سنقوم بمراجعة المعلومات المقدمة.',
+      })
+
+      // Reset form
       form.reset()
-      // You can implement a toast or alert here
     } catch (error) {
       console.error('Error submitting form:', error)
-      // Show error message to user
+      toast({
+        title: 'خطأ',
+        description: 'حدث خطأ أثناء إرسال البلاغ. الرجاء المحاولة مرة أخرى.',
+        variant: 'destructive',
+      })
     } finally {
-      setIsSubmitting(false)
+      setLoading(false)
     }
   }
 
@@ -152,107 +175,40 @@ export function SubmissionForm() {
             )}
           />
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="detaineeInfo.date_of_birth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>تاريخ الميلاد</FormLabel>
-                  <FormControl>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            'justify-start text-right font-normal',
-                            !field.value && 'text-muted-foreground'
-                          )}
-                        >
-                          <CalendarIcon className="ml-2 h-4 w-4" />
-                          {field.value ? (
-                            format(field.value, 'PPP', { locale: ar })
-                          ) : (
-                            <span>اختر تاريخ</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="detaineeInfo.gender"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>الجنس</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="male">ذكر</SelectItem>
-                      <SelectItem value="female">أنثى</SelectItem>
-                      <SelectItem value="other">آخر</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
           <FormField
             control={form.control}
-            name="detaineeInfo.detention_date"
+            name="detaineeInfo.date_of_birth"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>تاريخ الاعتقال</FormLabel>
-                <FormControl>
-                  <Popover>
-                    <PopoverTrigger asChild>
+              <FormItem className="flex flex-col">
+                <FormLabel>تاريخ الميلاد</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
                       <Button
-                        variant="outline"
+                        variant={'outline'}
                         className={cn(
-                          'justify-start text-right font-normal',
+                          'w-[240px] pl-3 text-right font-normal',
                           !field.value && 'text-muted-foreground'
                         )}
                       >
-                        <CalendarIcon className="ml-2 h-4 w-4" />
                         {field.value ? (
                           format(field.value, 'PPP', { locale: ar })
                         ) : (
                           <span>اختر تاريخ</span>
                         )}
+                        <CalendarIcon className="mr-auto h-4 w-4" />
                       </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </FormControl>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
                 <FormMessage />
               </FormItem>
             )}
@@ -260,10 +216,10 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="detaineeInfo.detention_location_ar"
+            name="detaineeInfo.place_of_birth_ar"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>مكان الاعتقال</FormLabel>
+                <FormLabel>مكان الولادة (بالعربية)</FormLabel>
                 <FormControl>
                   <Input {...field} dir="rtl" />
                 </FormControl>
@@ -274,10 +230,204 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="detaineeInfo.additional_info_ar"
+            name="detaineeInfo.place_of_birth_en"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>معلومات إضافية</FormLabel>
+                <FormLabel>Place of Birth (English)</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.gender"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>الجنس</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر الجنس" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="male">ذكر</SelectItem>
+                    <SelectItem value="female">أنثى</SelectItem>
+                    <SelectItem value="other">آخر</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.nationality"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>الجنسية</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر الجنسية" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="syrian">سوري</SelectItem>
+                    <SelectItem value="palestinian">فلسطيني</SelectItem>
+                    <SelectItem value="other">آخر</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.detention_date"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>تاريخ الاعتقال</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={'outline'}
+                        className={cn(
+                          'w-[240px] pl-3 text-right font-normal',
+                          !field.value && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value ? (
+                          format(field.value, 'PPP', { locale: ar })
+                        ) : (
+                          <span>اختر تاريخ</span>
+                        )}
+                        <CalendarIcon className="mr-auto h-4 w-4" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.detention_location_ar"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>مكان الاعتقال (بالعربية)</FormLabel>
+                <FormControl>
+                  <Input {...field} dir="rtl" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.detention_location_en"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Detention Location (English)</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.last_seen_date"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>تاريخ آخر مشاهدة</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={'outline'}
+                        className={cn(
+                          'w-[240px] pl-3 text-right font-normal',
+                          !field.value && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value ? (
+                          format(field.value, 'PPP', { locale: ar })
+                        ) : (
+                          <span>اختر تاريخ</span>
+                        )}
+                        <CalendarIcon className="mr-auto h-4 w-4" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.last_seen_location_ar"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>مكان آخر مشاهدة (بالعربية)</FormLabel>
+                <FormControl>
+                  <Input {...field} dir="rtl" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.last_seen_location_en"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Last Seen Location (English)</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="detaineeInfo.notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>ملاحظات</FormLabel>
                 <FormControl>
                   <Textarea {...field} dir="rtl" />
                 </FormControl>
@@ -292,7 +442,7 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="submitterInfo.submitter_name"
+            name="submitterInfo.name"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>الاسم</FormLabel>
@@ -306,12 +456,12 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="submitterInfo.submitter_email"
+            name="submitterInfo.relationship"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>البريد الإلكتروني</FormLabel>
+                <FormLabel>العلاقة بالمعتقل</FormLabel>
                 <FormControl>
-                  <Input {...field} type="email" />
+                  <Input {...field} dir="rtl" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -320,7 +470,7 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="submitterInfo.submitter_phone"
+            name="submitterInfo.phone"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>رقم الهاتف</FormLabel>
@@ -334,12 +484,26 @@ export function SubmissionForm() {
 
           <FormField
             control={form.control}
-            name="submitterInfo.submitter_relation"
+            name="submitterInfo.email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>العلاقة بالمعتقل</FormLabel>
+                <FormLabel>البريد الإلكتروني</FormLabel>
                 <FormControl>
-                  <Input {...field} dir="rtl" />
+                  <Input {...field} type="email" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="submitterInfo.notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>ملاحظات</FormLabel>
+                <FormControl>
+                  <Textarea {...field} dir="rtl" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -347,8 +511,8 @@ export function SubmissionForm() {
           />
         </div>
 
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'جاري الإرسال...' : 'إرسال البلاغ'}
+        <Button type="submit" disabled={loading}>
+          {loading ? 'جاري التقديم...' : 'تقديم المعلومات'}
         </Button>
       </form>
     </Form>

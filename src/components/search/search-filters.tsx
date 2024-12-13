@@ -1,12 +1,7 @@
+'use client'
+
 import { useState } from 'react'
 import { Calendar } from '@/components/ui/calendar'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Popover,
   PopoverContent,
@@ -20,146 +15,93 @@ import { ar } from 'date-fns/locale'
 import { DetaineeFilter } from '@/lib/types/detainees'
 
 interface SearchFiltersProps {
-  filter: DetaineeFilter
-  onFilterChange: (filter: Partial<DetaineeFilter>) => void
+  onFilterChange: (filters: DetaineeFilter) => void
   className?: string
 }
 
-export function SearchFilters({
-  filter,
-  onFilterChange,
-  className,
-}: SearchFiltersProps) {
-  const [startDate, setStartDate] = useState<Date | undefined>(
-    filter.startDate ? new Date(filter.startDate) : undefined
-  )
-  const [endDate, setEndDate] = useState<Date | undefined>(
-    filter.endDate ? new Date(filter.endDate) : undefined
-  )
+export function SearchFilters({ onFilterChange, className }: SearchFiltersProps) {
+  const [date, setDate] = useState<Date>()
+  const [location, setLocation] = useState('')
+  const [status, setStatus] = useState<string>('')
+
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    setDate(selectedDate)
+    updateFilters({ date: selectedDate })
+  }
+
+  const handleLocationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newLocation = event.target.value
+    setLocation(newLocation)
+    updateFilters({ location: newLocation })
+  }
+
+  const handleStatusChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newStatus = event.target.value
+    setStatus(newStatus)
+    updateFilters({ status: newStatus })
+  }
+
+  const updateFilters = (updatedFilter: Partial<DetaineeFilter>) => {
+    onFilterChange({
+      date: date,
+      location: location,
+      status: status,
+      ...updatedFilter,
+    })
+  }
 
   return (
-    <div className={cn('space-y-4', className)}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        <Select
-          value={filter.status}
-          onValueChange={(value) => onFilterChange({ status: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="الحالة" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="detained">معتقل</SelectItem>
-            <SelectItem value="released">مطلق سراح</SelectItem>
-            <SelectItem value="deceased">متوفى</SelectItem>
-            <SelectItem value="unknown">غير معروف</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className={cn('flex flex-wrap gap-4', className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              'justify-start text-left font-normal',
+              !date && 'text-muted-foreground'
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {date ? (
+              format(date, 'PPP', { locale: ar })
+            ) : (
+              <span>تاريخ الاعتقال</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
 
-        <Select
-          value={filter.gender}
-          onValueChange={(value) => onFilterChange({ gender: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="الجنس" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="male">ذكر</SelectItem>
-            <SelectItem value="female">أنثى</SelectItem>
-            <SelectItem value="other">آخر</SelectItem>
-          </SelectContent>
-        </Select>
+      <select
+        value={location}
+        onChange={handleLocationChange}
+        className="rounded-md border border-input bg-background px-3 py-2"
+      >
+        <option value="">المحافظة</option>
+        <option value="damascus">دمشق</option>
+        <option value="aleppo">حلب</option>
+        <option value="homs">حمص</option>
+        {/* Add more locations */}
+      </select>
 
-        <Select
-          value={filter.nationality}
-          onValueChange={(value) => onFilterChange({ nationality: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="الجنسية" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="syrian">سوري</SelectItem>
-            <SelectItem value="palestinian">فلسطيني</SelectItem>
-            <SelectItem value="other">آخر</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filter.verified?.toString()}
-          onValueChange={(value) =>
-            onFilterChange({ verified: value === 'true' })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="حالة التحقق" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">تم التحقق</SelectItem>
-            <SelectItem value="false">لم يتم التحقق</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-wrap gap-4">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'justify-start text-right font-normal',
-                !startDate && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className="ml-2 h-4 w-4" />
-              {startDate ? (
-                format(startDate, 'PPP', { locale: ar })
-              ) : (
-                <span>تاريخ الاعتقال (من)</span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={startDate}
-              onSelect={(date) => {
-                setStartDate(date)
-                onFilterChange({ startDate: date?.toISOString() })
-              }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'justify-start text-right font-normal',
-                !endDate && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className="ml-2 h-4 w-4" />
-              {endDate ? (
-                format(endDate, 'PPP', { locale: ar })
-              ) : (
-                <span>تاريخ الاعتقال (إلى)</span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={endDate}
-              onSelect={(date) => {
-                setEndDate(date)
-                onFilterChange({ endDate: date?.toISOString() })
-              }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-      </div>
+      <select
+        value={status}
+        onChange={handleStatusChange}
+        className="rounded-md border border-input bg-background px-3 py-2"
+      >
+        <option value="">الحالة</option>
+        <option value="detained">معتقل</option>
+        <option value="released">مفرج عنه</option>
+        <option value="deceased">متوفي</option>
+        <option value="unknown">غير معروف</option>
+      </select>
     </div>
   )
 }

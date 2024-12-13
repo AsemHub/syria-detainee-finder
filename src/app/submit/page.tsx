@@ -1,3 +1,5 @@
+'use client'
+
 import { SubmissionForm } from "@/components/forms/submission-form"
 import { Card, CardContent } from "@/components/ui/card"
 

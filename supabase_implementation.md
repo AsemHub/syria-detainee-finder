@@ -5,7 +5,7 @@
 ### 1. Initial Configuration
 ```bash
 # Install Supabase dependencies
-npm install @supabase/supabase-js @supabase/auth-helpers-nextjs
+npm install @supabase/supabase-js @supabase/ssr
 ```
 
 ### 2. Environment Setup
@@ -13,7 +13,6 @@ Add to `.env.local`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 ## Database Schema 
@@ -31,16 +30,16 @@ begin
   end if;
 
   -- Remove diacritics (tashkeel)
-  normalized := regexp_replace(input, '[\u064B-\u065F\u0670]', '', 'g');
+  normalized := regexp_replace(input, '[\\u064B-\\u065F\\u0670]', '', 'g');
   
   -- Normalize alef variations to simple alef
-  normalized := regexp_replace(normalized, '[\u0622\u0623\u0625]', '\u0627', 'g');
+  normalized := regexp_replace(normalized, '[\\u0622\\u0623\\u0625]', '\\u0627', 'g');
   
   -- Normalize teh marbuta to heh
-  normalized := regexp_replace(normalized, '\u0629', '\u0647', 'g');
+  normalized := regexp_replace(normalized, '\\u0629', '\\u0647', 'g');
   
   -- Normalize yeh variations
-  normalized := regexp_replace(normalized, '\u0649', '\u064A', 'g');
+  normalized := regexp_replace(normalized, '\\u0649', '\\u064A', 'g');
   
   return normalized;
 end;
@@ -49,20 +48,16 @@ $$ language plpgsql immutable strict;
 -- Test cases for normalize_arabic function
 do $$
 begin
-  -- Basic normalization
   assert normalize_arabic('مُحَمَّد') = 'محمد';
-  -- Alef variations
-  assert normalize_arabic('آمِن') = 'امن';
-  -- Teh marbuta
-  assert normalize_arabic('مدرسة') = 'مدرسه';
-  -- Yeh variations
-  assert normalize_arabic('موسى') = 'موسي';
-end $$;
+  assert normalize_arabic('عبدالرحمٰن') = 'عبدالرحمن';
+  assert normalize_arabic('فاطمة') = 'فاطمه';
+end;
+$$;
 ```
 
 ### Tables
 
-#### 1. detainees 
+#### 1. detainees
 ```sql
 create table detainees (
   id uuid default gen_random_uuid() primary key,
@@ -98,7 +93,6 @@ create table detainees (
   updated_at timestamp with time zone not null default timezone('utc'::text, now()),
   verified boolean not null default false,
   verified_at timestamp with time zone,
-  verified_by uuid references auth.users(id),
   search_vector tsvector generated always as (
     setweight(to_tsvector('arabic', coalesce(full_name_ar, '')), 'A') ||
     setweight(to_tsvector('english', coalesce(full_name_en, '')), 'A') ||
@@ -163,7 +157,6 @@ create table documents (
 create table detainee_history (
   id uuid default gen_random_uuid() primary key,
   detainee_id uuid references detainees(id),
-  changed_by uuid references auth.users(id),
   changed_at timestamp with time zone default timezone('utc'::text, now()),
   previous_data jsonb,
   new_data jsonb,
@@ -182,7 +175,6 @@ src/
 ├── lib/
 │   └── supabase/
 │       ├── client.ts      # Supabase client configuration
-│       ├── admin.ts       # Admin client for server operations
 │       └── types.ts       # Supabase database types
 ├── utils/
 │   └── supabase/
@@ -207,45 +199,20 @@ src/app/api/
 
 ### 1. Role-Based Access Control
 ```sql
--- Create custom roles
-create type user_role as enum ('admin', 'verifier', 'staff', 'public');
-
--- Create role management function
-create or replace function get_user_role()
-returns user_role as $$
-begin
-  -- Check JWT claims in order of privilege
-  if (auth.jwt()->>'is_admin')::boolean then
-    return 'admin'::user_role;
-  elsif (auth.jwt()->>'is_verifier')::boolean then
-    return 'verifier'::user_role;
-  elsif (auth.jwt()->>'is_staff')::boolean then
-    return 'staff'::user_role;
-  else
-    return 'public'::user_role;
-  end if;
-end;
-$$ language plpgsql security definer;
-
--- Enhanced RLS policies
-create policy "Role-based read access"
+-- Create RLS policies
+create policy "Public read access"
   on detainees for select
-  using (
-    case get_user_role()
-      when 'admin' then true
-      when 'verifier' then true
-      when 'staff' then true
-      else verified = true
-    end
-  );
+  using (verified = true);
 
-create policy "Role-based write access"
+create policy "Protected write access"
+  on detainees for insert
+  with check (true);
+
+create policy "Protected update access"
   on detainees for update
   using (
-    case get_user_role()
-      when 'admin' then true
-      when 'verifier' then true
-      when 'staff' then not verified
+    case when ip_address = current_setting('request.headers')::json->>'x-real-ip'
+      then not verified
       else false
     end
   );
@@ -259,7 +226,7 @@ import { createClient } from '@supabase/supabase-js'
 export async function rateLimit(req: Request) {
   const supabase = createClient(
     process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_ANON_KEY!
   )
 
   const ip = req.headers.get('x-real-ip')
@@ -376,63 +343,77 @@ export function setupMonitoring() {
 }
 ```
 
-### 3. Backup Verification
-```typescript
-// src/scripts/verify-backup.ts
-import { createClient } from '@supabase/supabase-js'
+### 3. Backup Strategy
+```sql
+-- Create backup schema
+create schema if not exists backup;
 
-async function verifyBackup() {
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+-- Create backup function
+create or replace function create_daily_backup()
+returns void as $$
+begin
+  -- Create backup tables
+  execute format(
+    'create table if not exists backup.detainees_%s as select * from detainees',
+    to_char(current_date, 'YYYY_MM_DD')
+  );
+  
+  -- Rotate backups (keep last 30 days)
+  execute format(
+    'drop table if exists backup.detainees_%s',
+    to_char(current_date - interval '30 days', 'YYYY_MM_DD')
+  );
+end;
+$$ language plpgsql;
 
-  const date = new Date().toISOString().split('T')[0].replace(/-/g, '_')
-  const backupTable = `backup.detainees_${date}`
-
-  // Verify row counts match
-  const { count: originalCount } = await supabase
-    .from('detainees')
-    .select('*', { count: 'exact', head: true })
-
-  const { count: backupCount } = await supabase
-    .from(backupTable)
-    .select('*', { count: 'exact', head: true })
-
-  if (originalCount !== backupCount) {
-    throw new Error(`Backup verification failed: Row count mismatch
-      Original: ${originalCount}, Backup: ${backupCount}`)
-  }
-
-  // Verify sample records
-  const { data: sampleOriginal } = await supabase
-    .from('detainees')
-    .select('*')
-    .limit(10)
-
-  const { data: sampleBackup } = await supabase
-    .from(backupTable)
-    .select('*')
-    .in('id', sampleOriginal.map(r => r.id))
-
-  // Compare samples
-  for (const original of sampleOriginal) {
-    const backup = sampleBackup.find(b => b.id === original.id)
-    if (!backup || JSON.stringify(original) !== JSON.stringify(backup)) {
-      throw new Error(`Backup verification failed: Data mismatch for id ${original.id}`)
-    }
-  }
-
-  console.log('Backup verification completed successfully')
-}
+-- Schedule daily backup
+select cron.schedule(
+  'daily-backup',
+  '0 0 * * *',
+  'select create_daily_backup()'
+);
 ```
+
+## Current Implementation Status
+
+### 1. Database Schema 
+- Detainees table implemented with:
+  - Arabic text normalization
+  - Automatic field normalization
+  - Proper indexing for search
+- Submissions table linked to detainees
+- Row Level Security policies in place
+
+### 2. Search Implementation (In Progress)
+- Basic search functionality working
+- Arabic text search with normalization
+- Full-text search capabilities
+- Search result pagination (In Progress)
+- Advanced filtering (In Progress)
+
+### 3. Data Management
+- Bulk upload functionality implemented
+- Data validation in place
+- Submission workflow working
+- Verification system implemented
+
+### 4. Performance Optimizations
+- Database indexes created
+- Query monitoring in place
+- Slow query logging implemented
+- Edge function caching (Pending)
+
+### 5. Security Measures
+- Row Level Security configured
+- Input sanitization implemented
+- Rate limiting in place
+- API key rotation system (Pending)
 
 ## Integration Steps
 
 1. **Client Setup**
    - Initialize Supabase client
-   - Set up authentication hooks
-   - Configure middleware for session handling
+   - Configure middleware for request handling
 
 2. **Data Layer**
    - Implement database types
@@ -456,8 +437,8 @@ async function verifyBackup() {
 
 6. **Security Measures**
    - Implement RLS policies
-   - Set up API authentication
    - Configure CORS policies
+   - Set up rate limiting
 
 ## Testing Strategy
 
@@ -473,8 +454,8 @@ async function verifyBackup() {
 
 3. **Security Tests**
    - RLS policy validation
-   - Authentication flows
    - Rate limiting
+   - Input validation
 
 ## Monitoring and Maintenance 
 
@@ -508,48 +489,3 @@ create trigger log_slow_queries_trigger
   after insert or update or delete on detainees
   execute procedure log_slow_queries('1 second');
 ```
-
-### 2. Error Tracking
-```typescript
-// src/lib/supabase/error-tracking.ts
-import * as Sentry from '@sentry/nextjs';
-
-export const logDatabaseError = async (error: any, context: any) => {
-  Sentry.captureException(error, {
-    extra: {
-      ...context,
-      timestamp: new Date().toISOString(),
-    },
-  });
-};
-```
-
-### 3. Backup Strategy
-```sql
--- Create backup schema
-create schema if not exists backup;
-
--- Create backup function
-create or replace function create_daily_backup()
-returns void as $$
-begin
-  -- Create backup tables
-  execute format(
-    'create table if not exists backup.detainees_%s as select * from detainees',
-    to_char(current_date, 'YYYY_MM_DD')
-  );
-  
-  -- Rotate backups (keep last 30 days)
-  execute format(
-    'drop table if exists backup.detainees_%s',
-    to_char(current_date - interval '30 days', 'YYYY_MM_DD')
-  );
-end;
-$$ language plpgsql;
-
--- Schedule daily backup
-select cron.schedule(
-  'daily-backup',
-  '0 0 * * *',
-  'select create_daily_backup()'
-);

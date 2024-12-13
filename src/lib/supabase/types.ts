@@ -44,6 +44,18 @@ export interface Database {
           'detention_location_ar_normalized' | 'last_seen_location_ar_normalized'>
         Update: Partial<Database['public']['Tables']['detainees']['Insert']>
       }
+      user_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          full_name: string | null
+          role: 'admin' | 'verifier' | 'staff' | 'public'
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['user_profiles']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['user_profiles']['Insert']>
+      }
       submissions: {
         Row: {
           id: string

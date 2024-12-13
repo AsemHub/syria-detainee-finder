@@ -5,12 +5,14 @@ import { Database } from '../../../src/lib/types/database.types'
 import { handleCorsRequest } from '../_shared/handle-cors'
 
 interface SearchFilter {
-  status?: string
-  gender?: string
+  status?: 'detained' | 'released' | 'deceased' | 'unknown'
+  gender?: 'male' | 'female' | 'other'
   nationality?: string
   verified?: boolean
-  startDate?: string
-  endDate?: string
+  detentionStartDate?: string
+  detentionEndDate?: string
+  lastSeenStartDate?: string
+  lastSeenEndDate?: string
   limit?: number
   offset?: number
 }
@@ -18,6 +20,7 @@ interface SearchFilter {
 interface SearchRequest {
   query?: string
   filter?: SearchFilter
+  language?: 'ar' | 'en'
 }
 
 // Create a Supabase client with the Auth context of the function
@@ -32,102 +35,131 @@ serve(async (req: Request) => {
   return await handleCorsRequest(req, async () => {
     // Only allow POST requests
     if (req.method !== 'POST') {
-      return {
-        status: 405,
-        error: 'Method not allowed',
-      }
+      return new Response(
+        JSON.stringify({ error: 'Method not allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     try {
-      const { query, filter } = await req.json() as SearchRequest
+      const { query, filter, language = 'ar' } = await req.json() as SearchRequest
 
-      // Normalize Arabic query if present
-      const { data: normalizedQuery } = await supabaseClient.rpc('normalize_arabic', {
-        input: query || ''
-      })
+      // Normalize Arabic query if present and language is Arabic
+      let normalizedQuery = query
+      if (language === 'ar' && query) {
+        const { data: normalized } = await supabaseClient.rpc('normalize_arabic', {
+          input: query
+        })
+        normalizedQuery = normalized
+      }
 
       // Start building the search query
       let searchQuery = supabaseClient
         .from('detainees')
         .select(`
           *,
-          documents (
+          documents!inner (
             id,
             document_type,
-            file_name,
-            verified
+            file_path,
+            description_ar,
+            description_en
           )
         `)
 
-      // Apply full-text search if query is present
-      if (query) {
-        searchQuery = searchQuery.or(`
-          full_name_ar_normalized.ilike.%${normalizedQuery}%,
-          full_name_en.ilike.%${query}%,
-          place_of_birth_ar_normalized.ilike.%${normalizedQuery}%,
-          place_of_birth_en.ilike.%${query}%,
-          detention_location_ar_normalized.ilike.%${normalizedQuery}%,
-          detention_location_en.ilike.%${query}%,
-          last_seen_location_ar_normalized.ilike.%${normalizedQuery}%,
-          last_seen_location_en.ilike.%${query}%
-        `)
+      // Apply text search if query is present
+      if (normalizedQuery) {
+        if (language === 'ar') {
+          searchQuery = searchQuery.or(`
+            full_name_ar_normalized.ilike.%${normalizedQuery}%,
+            place_of_birth_ar_normalized.ilike.%${normalizedQuery}%,
+            detention_location_ar_normalized.ilike.%${normalizedQuery}%,
+            last_seen_location_ar_normalized.ilike.%${normalizedQuery}%
+          `)
+        } else {
+          searchQuery = searchQuery.or(`
+            full_name_en.ilike.%${query}%,
+            place_of_birth_en.ilike.%${query}%,
+            detention_location_en.ilike.%${query}%,
+            last_seen_location_en.ilike.%${query}%
+          `)
+        }
       }
 
       // Apply filters
       if (filter) {
-        const {
-          status,
-          gender,
-          nationality,
-          verified,
-          startDate,
-          endDate,
-        } = filter
-
-        if (status) {
-          searchQuery = searchQuery.eq('status', status)
+        if (filter.status) {
+          searchQuery = searchQuery.eq('status', filter.status)
         }
-        if (gender) {
-          searchQuery = searchQuery.eq('gender', gender)
+        if (filter.gender) {
+          searchQuery = searchQuery.eq('gender', filter.gender)
         }
-        if (nationality) {
-          searchQuery = searchQuery.eq('nationality', nationality)
+        if (filter.nationality) {
+          searchQuery = searchQuery.ilike('nationality', `%${filter.nationality}%`)
         }
-        if (verified !== undefined) {
-          searchQuery = searchQuery.eq('verified', verified)
+        if (typeof filter.verified === 'boolean') {
+          searchQuery = searchQuery.eq('verified', filter.verified)
         }
-        if (startDate) {
-          searchQuery = searchQuery.gte('detention_date', startDate)
+        if (filter.detentionStartDate) {
+          searchQuery = searchQuery.gte('detention_date', filter.detentionStartDate)
         }
-        if (endDate) {
-          searchQuery = searchQuery.lte('detention_date', endDate)
+        if (filter.detentionEndDate) {
+          searchQuery = searchQuery.lte('detention_date', filter.detentionEndDate)
         }
-
-        // Apply pagination and ordering
-        if (filter?.limit !== undefined) {
-          searchQuery = searchQuery.range(
-            filter.offset || 0,
-            (filter.offset || 0) + filter.limit - 1
-          )
+        if (filter.lastSeenStartDate) {
+          searchQuery = searchQuery.gte('last_seen_date', filter.lastSeenStartDate)
         }
-        searchQuery = searchQuery.order('created_at', { ascending: false })
+        if (filter.lastSeenEndDate) {
+          searchQuery = searchQuery.lte('last_seen_date', filter.lastSeenEndDate)
+        }
       }
 
-      const { data: detainees, error: searchError } = await searchQuery
+      // Apply pagination
+      const limit = filter?.limit ?? 10
+      const offset = filter?.offset ?? 0
+      searchQuery = searchQuery
+        .limit(limit)
+        .offset(offset)
+        .order('created_at', { ascending: false })
 
-      if (searchError) {
-        throw new Error(searchError.message)
-      }
+      // Execute the query
+      const { data, error, count } = await searchQuery
 
-      return {
-        status: 200,
-        data: detainees,
-      }
+      if (error) throw error
+
+      return new Response(
+        JSON.stringify({ 
+          data, 
+          count,
+          pagination: {
+            limit,
+            offset,
+            hasMore: (count ?? 0) > offset + limit
+          }
+        }),
+        { 
+          status: 200, 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          } 
+        }
+      )
     } catch (error) {
-      return {
-        status: 400,
-        error: error instanceof Error ? error.message : 'An unknown error occurred',
-      }
+      console.error('Error:', error)
+      return new Response(
+        JSON.stringify({ 
+          error: 'Internal Server Error',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        }),
+        { 
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
     }
   })
 })

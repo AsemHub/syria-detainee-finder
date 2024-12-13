@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/lib/auth/auth-context'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { format } from 'date-fns'
 import { ar } from 'date-fns/locale'
@@ -46,7 +45,6 @@ type Submission = {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth()
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClientComponentClient()
@@ -115,21 +113,6 @@ export default function DashboardPage() {
         variant: 'destructive',
       })
     }
-  }
-
-  if (!user) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>غير مصرح</CardTitle>
-            <CardDescription>
-              يجب تسجيل الدخول للوصول إلى لوحة التحكم
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    )
   }
 
   return (

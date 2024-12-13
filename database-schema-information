@@ -1,0 +1,67 @@
+| schemaname | tablename | policyname                            | permissive | roles           | cmd    | qual                                                                                                                                                                                                                                                                                         | with_check                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | --------- | ------------------------------------- | ---------- | --------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| public     | detainees | Role-based read access                | PERMISSIVE | {public}        | SELECT | 
+CASE
+    WHEN (auth.jwt() IS NULL) THEN (verified = true)
+    WHEN ((auth.jwt() ->> 'is_admin'::text))::boolean THEN true
+    WHEN ((auth.jwt() ->> 'is_verifier'::text))::boolean THEN true
+    WHEN ((auth.jwt() ->> 'is_staff'::text))::boolean THEN true
+    ELSE (verified = true)
+END |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | detainees | Role-based write access               | PERMISSIVE | {public}        | UPDATE | 
+CASE
+    WHEN (auth.jwt() IS NULL) THEN false
+    WHEN ((auth.jwt() ->> 'is_admin'::text))::boolean THEN true
+    WHEN ((auth.jwt() ->> 'is_verifier'::text))::boolean THEN true
+    WHEN ((auth.jwt() ->> 'is_staff'::text))::boolean THEN (NOT verified)
+    ELSE false
+END               |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Allow authenticated document creation | PERMISSIVE | {authenticated} | INSERT |                                                                                                                                                                                                                                                                                              | ((EXISTS ( SELECT 1
+   FROM auth.users
+  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'verifier'::text)))) OR (EXISTS ( SELECT 1
+   FROM submissions s
+  WHERE ((s.detainee_id = documents.detainee_id) AND (s.submitter_email = (( SELECT users.email
+           FROM auth.users
+          WHERE (users.id = auth.uid())))::text))))) |
+| public     | documents | Public can view verified documents    | PERMISSIVE | {public}        | SELECT | (verified = true)                                                                                                                                                                                                                                                                            |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Staff can manage documents            | PERMISSIVE | {public}        | ALL    | 
+CASE
+    WHEN (auth.jwt() IS NULL) THEN false
+    WHEN ((auth.jwt() ->> 'is_admin'::text))::boolean THEN true
+    WHEN ((auth.jwt() ->> 'is_staff'::text))::boolean THEN true
+    ELSE false
+END                                                                                            |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Users can read own documents          | PERMISSIVE | {authenticated} | SELECT | (EXISTS ( SELECT 1
+   FROM submissions s
+  WHERE ((s.detainee_id = documents.detainee_id) AND (s.submitter_email = (( SELECT users.email
+           FROM auth.users
+          WHERE (users.id = auth.uid())))::text))))                                                                      |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Verifiers can delete documents        | PERMISSIVE | {authenticated} | DELETE | (EXISTS ( SELECT 1
+   FROM auth.users
+  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'verifier'::text))))                                                                                                                                                                        |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Verifiers can read all documents      | PERMISSIVE | {authenticated} | SELECT | (EXISTS ( SELECT 1
+   FROM auth.users
+  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'verifier'::text))))                                                                                                                                                                        |                                                                                                                                                                                                                                                                                                                                                    |
+| public     | documents | Verifiers can update documents        | PERMISSIVE | {authenticated} | UPDATE | (EXISTS ( SELECT 1
+   FROM auth.users
+  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'verifier'::text))))                                                                                                                                                                        | (EXISTS ( SELECT 1
+   FROM auth.users
+  WHERE ((users.id = auth.uid()) AND ((users.role)::text = 'verifier'::text))))                                                                                                                                                                                                                              |
+
+
+  | column_name    | data_type                | column_default               | is_nullable |
+| -------------- | ------------------------ | ---------------------------- | ----------- |
+| id             | uuid                     |                              | NO          |
+| email          | text                     |                              | NO          |
+| full_name      | text                     |                              | YES         |
+| avatar_url     | text                     |                              | YES         |
+| role           | text                     | 'user'::text                 | NO          |
+| provider       | text                     |                              | YES         |
+| email_verified | boolean                  | false                        | NO          |
+| created_at     | timestamp with time zone | timezone('utc'::text, now()) | NO          |
+| updated_at     | timestamp with time zone | timezone('utc'::text, now()) | NO          |
+| last_sign_in   | timestamp with time zone |                              | YES         |
+
+| enum_name | enum_values                   |
+| --------- | ----------------------------- |
+| user_role | {admin,verifier,staff,public} |

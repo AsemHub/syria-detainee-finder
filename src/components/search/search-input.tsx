@@ -1,53 +1,56 @@
-import { useState, useCallback } from 'react'
+'use client'
+
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { SearchIcon } from '@radix-ui/react-icons'
+import { MagnifyingGlassIcon } from '@radix-ui/react-icons'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useState, useEffect } from 'react'
 
 interface SearchInputProps {
   onSearch: (query: string) => void
   placeholder?: string
-  debounceMs?: number
   className?: string
 }
 
 export function SearchInput({
   onSearch,
-  placeholder = 'البحث عن معتقل...',
-  debounceMs = 300,
+  placeholder = 'Search...',
   className,
 }: SearchInputProps) {
-  const [value, setValue] = useState('')
-  
-  const debouncedSearch = useDebounce(onSearch, debounceMs)
+  const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearchTerm = useDebounce(searchTerm, 300)
 
-  const handleSearch = useCallback(() => {
-    debouncedSearch(value)
-  }, [debouncedSearch, value])
+  // Only use the debounced effect for search
+  useEffect(() => {
+    if (debouncedSearchTerm !== searchTerm) {
+      onSearch(debouncedSearchTerm)
+    }
+  }, [debouncedSearchTerm])
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        handleSearch()
-      }
-    },
-    [handleSearch]
-  )
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    // Immediately trigger search on form submit
+    onSearch(searchTerm)
+  }
 
   return (
-    <div className="flex w-full max-w-sm items-center space-x-2 rtl:space-x-reverse">
+    <form onSubmit={handleSubmit} className={`relative w-full ${className}`}>
       <Input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
+        type="search"
         placeholder={placeholder}
-        className="text-right"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="pr-10"
       />
-      <Button type="submit" onClick={handleSearch}>
-        <SearchIcon className="h-4 w-4" />
-        <span className="mr-2">بحث</span>
+      <Button
+        type="submit"
+        variant="ghost"
+        size="sm"
+        className="absolute right-0 top-0 h-full px-3"
+      >
+        <MagnifyingGlassIcon className="h-4 w-4" />
+        <span className="sr-only">Search</span>
       </Button>
-    </div>
+    </form>
   )
 }
