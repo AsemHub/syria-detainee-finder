@@ -1,6 +1,6 @@
 'use client'
 
-import { SubmissionForm } from "@/components/forms/submission-form"
+import SubmissionForm from "@/components/forms/submission-form"
 import { Card, CardContent } from "@/components/ui/card"
 
 export default function SubmitPage() {
