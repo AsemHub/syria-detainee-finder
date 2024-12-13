@@ -1,8 +1,8 @@
 import { serve } from "std/http/server"
 import { createClient } from '@supabase/supabase-js'
-import { corsHeaders } from '../_shared/cors.ts'
-import { Database } from '../../../src/lib/types/database.types'
-import { handleCorsRequest } from '../_shared/handle-cors.ts'
+import { corsHeaders } from "../_shared/cors.ts"
+import { Database } from "../../../src/lib/types/database.types"
+import { handleCorsRequest } from "../_shared/handle-cors.ts"
 
 interface DocumentSubmission {
   detainee_id: string

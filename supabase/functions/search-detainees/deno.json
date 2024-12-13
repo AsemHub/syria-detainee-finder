@@ -1,7 +1,8 @@
 {
   "imports": {
     "std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "../_shared/": "../_shared/"
   },
   "compilerOptions": {
     "allowJs": true,
