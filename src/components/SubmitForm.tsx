@@ -45,8 +45,8 @@ const formSchema = z.object({
     .optional(),
   age_at_detention: z.string()
     .refine(val => !val || !isNaN(parseInt(val)), "Age must be a number")
-    .transform(val => val ? parseInt(val) : undefined)
-    .refine(val => !val || (val >= 0 && val <= 120), "Age must be between 0 and 120")
+    .transform(val => val === "" ? "" : parseInt(val))
+    .refine(val => val === "" || (typeof val === "number" && val >= 0 && val <= 120), "Age must be between 0 and 120")
     .optional(),
   gender: z.enum(["male", "female", "other"]),
   status: z.enum(["missing", "released", "deceased"]),
@@ -71,20 +71,40 @@ export function SubmitForm() {
       last_seen_location: "",
       detention_facility: "",
       physical_description: "",
-      age_at_detention: undefined,
-      status: "missing",
-      gender: "male",
+      age_at_detention: "",
+      status: "missing" as const,
+      gender: "male" as const,
       contact_info: "",
       additional_notes: "",
     },
   })
 
+  const resetForm = () => {
+    form.reset({
+      full_name: "",
+      date_of_detention: "",
+      last_seen_location: "",
+      detention_facility: "",
+      physical_description: "",
+      age_at_detention: "",
+      status: "missing",
+      gender: "male",
+      contact_info: "",
+      additional_notes: "",
+    })
+  }
+
   async function onSubmit(values: FormData) {
+    if (isSubmitting) return
+    
     setIsSubmitting(true)
     try {
       const response = await fetch("/api/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache"
+        },
         body: JSON.stringify(values),
       })
 
@@ -94,7 +114,6 @@ export function SubmitForm() {
         if (response.status === 429) {
           throw new Error("Too many submissions. Please try again later.")
         } else if (response.status === 400 && data.details) {
-          // Handle validation errors from the server
           data.details.forEach((error: { path: string[]; message: string }) => {
             form.setError(error.path[0] as keyof FormData, {
               message: error.message,
@@ -109,7 +128,7 @@ export function SubmitForm() {
         title: "Success",
         description: data.message || "Detainee information has been submitted successfully.",
       })
-      form.reset()
+      resetForm()
     } catch (error) {
       toast({
         title: "Error",

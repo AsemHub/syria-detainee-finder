@@ -49,85 +49,126 @@ const submitSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    // Check if Supabase URL and key are configured
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      throw new Error("Supabase configuration is missing");
+    // Verify Supabase connection
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('Missing Supabase environment variables:', {
+        url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        key: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+      });
+      return NextResponse.json(
+        { error: 'Database configuration error' },
+        { status: 500 }
+      );
     }
 
     // Get client IP for rate limiting
-    const ip = request.headers.get("x-forwarded-for") || 
-               request.headers.get("x-real-ip") || 
-               "unknown";
-    
-    // Check rate limit
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const ip = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+
     if (isRateLimited(ip)) {
       return NextResponse.json(
-        { error: "Too many submissions. Please try again later." },
+        { error: 'Too many submissions. Please try again later.' },
         { status: 429 }
       );
     }
 
-    const body = await request.json()
-    console.log("Received data:", body);
-
-    const validatedData = submitSchema.parse(body)
-    console.log("Validated data:", validatedData);
-
-    // Sanitize and normalize the data
-    const normalizedData = {
-      ...validatedData,
-      full_name: validatedData.full_name.trim(),
-      last_seen_location: validatedData.last_seen_location.trim(),
-      detention_facility: validatedData.detention_facility?.trim(),
-      physical_description: validatedData.physical_description?.trim(),
-      contact_info: validatedData.contact_info.trim(),
-      additional_notes: validatedData.additional_notes?.trim(),
-      date_of_detention: validatedData.date_of_detention || null,
-      last_update_date: new Date().toISOString(),
-      created_at: new Date().toISOString()
-    }
-    console.log("Normalized data:", normalizedData);
-
-    const { data, error } = await supabaseServer
-      .from("detainees")
-      .insert([normalizedData])
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Database error:", error)
+    let body;
+    try {
+      body = await request.json();
+      console.log('Received request body:', body);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
       return NextResponse.json(
-        { error: "Database error", details: error.message },
-        { status: 500 }
-      )
-    }
-
-    // Record successful submission for rate limiting
-    const submissions = submissionTimes.get(ip) || [];
-    submissions.push(Date.now());
-    submissionTimes.set(ip, submissions);
-
-    return NextResponse.json({ 
-      success: true, 
-      data,
-      message: "Detainee information submitted successfully" 
-    })
-  } catch (error) {
-    console.error("Submit error:", error)
-    
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid data", details: error.errors },
+        { error: 'Invalid request body', details: 'Could not parse JSON' },
         { status: 400 }
-      )
+      );
+    }
+    
+    try {
+      const validatedData = submitSchema.parse(body);
+      console.log('Validated data:', validatedData);
+      
+      try {
+        console.log('Attempting database insert...');
+        const { data, error: insertError } = await supabaseServer
+          .from('detainees')
+          .insert([{
+            ...validatedData,
+            last_update_date: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Database error:', {
+            message: insertError.message,
+            code: insertError.code,
+            details: insertError.details,
+            hint: insertError.hint
+          });
+          return NextResponse.json(
+            { 
+              error: 'Database operation failed', 
+              details: insertError.message,
+              code: insertError.code,
+              hint: insertError.hint 
+            },
+            { status: 500 }
+          );
+        }
+
+        console.log('Database insert successful:', data);
+
+        // Manually refresh the materialized view
+        const { error: refreshError } = await supabaseServer
+          .rpc('refresh_detainees_search_mv');
+
+        if (refreshError) {
+          console.log('Failed to refresh materialized view:', refreshError);
+          // Don't return error here, the insert was successful
+        }
+
+        // Record the submission time for rate limiting
+        const submissions = submissionTimes.get(ip) || [];
+        submissions.push(Date.now());
+        submissionTimes.set(ip, submissions);
+
+        return NextResponse.json({
+          message: 'Submission successful',
+          id: data.id,
+          timestamp: data.created_at
+        });
+
+      } catch (dbError) {
+        console.error('Database connection error:', dbError);
+        return NextResponse.json(
+          { 
+            error: 'Database connection failed',
+            details: dbError instanceof Error ? dbError.message : 'Could not connect to database'
+          },
+          { status: 500 }
+        );
+      }
+
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        return NextResponse.json(
+          { error: 'Validation failed', details: validationError.errors },
+          { status: 400 }
+        );
+      }
+      throw validationError;
     }
 
+  } catch (error) {
+    console.error('Submission error:', error);
     return NextResponse.json(
       { 
-        error: "Failed to submit detainee information",
-        details: error instanceof Error ? error.message : "Unknown error"
+        error: 'Submission failed',
+        message: error instanceof Error ? error.message : 'An unexpected error occurred'
       },
       { status: 500 }
-    )
+    );
   }
 }

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
+import { debounce } from "lodash-es"
 import { Input } from "./ui/input"
 import { Button } from "./ui/button"
 import { Search, Loader2, Filter, Calendar as CalendarIcon } from "lucide-react"
@@ -37,7 +38,7 @@ export interface SearchParams {
 }
 
 interface SearchBoxProps {
-  onSearchAction: (params: SearchParams) => Promise<void>
+  onSearchAction: (params: SearchParams, signal?: AbortSignal) => Promise<void>
   loading?: boolean
 }
 
@@ -45,23 +46,104 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
   const [query, setQuery] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<Omit<SearchParams, 'searchText'>>({})
+  const [isSearching, setIsSearching] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const debouncedSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const performSearch = useCallback(async (searchText: string, searchFilters: typeof filters, isImmediate: boolean = false) => {
+    // Don't perform empty searches or short searches from debounce
+    if (!isImmediate && (!searchText.trim() || searchText.trim().length < 2)) {
+      return;
+    }
+
+    if (isSearching) return;
+    
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    // Only show loading state for immediate searches
+    if (isImmediate) {
+      setIsSearching(true);
+    }
+
+    try {
+      await onSearchAction({
+        searchText: searchText.trim() || undefined,
+        ...searchFilters
+      }, abortController.signal);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      console.error('Search error:', error);
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
+      if (isImmediate) {
+        setIsSearching(false);
+      }
+    }
+  }, [isSearching, onSearchAction]);
+
+  // Handle input changes
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    if (debouncedSearchRef.current) {
+      clearTimeout(debouncedSearchRef.current);
+    }
+
+    // Don't set up debounce for empty or short queries
+    if (!value.trim() || value.trim().length < 2) {
+      return;
+    }
+
+    debouncedSearchRef.current = setTimeout(() => {
+      performSearch(value, filters, false);
+      debouncedSearchRef.current = null;
+    }, 800);
+  }, [filters, performSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (debouncedSearchRef.current) {
+        clearTimeout(debouncedSearchRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (loading) return
+    e.preventDefault();
     
-    await onSearchAction({
-      searchText: query.trim() || undefined,
-      ...filters
-    })
-  }
+    // Clear any pending debounced search
+    if (debouncedSearchRef.current) {
+      clearTimeout(debouncedSearchRef.current);
+      debouncedSearchRef.current = null;
+    }
 
-  const handleFilterChange = (key: keyof Omit<SearchParams, 'searchText'>, value: any) => {
-    setFilters(prev => ({
-      ...prev,
+    // Perform immediate search
+    await performSearch(query, filters, true);
+  };
+
+  const handleFilterChange = useCallback((key: keyof Omit<SearchParams, 'searchText'>, value: any) => {
+    const newFilters = {
+      ...filters,
       [key]: value || undefined
-    }))
-  }
+    };
+    setFilters(newFilters);
+    performSearch(query, newFilters, true);
+  }, [filters, query, performSearch]);
 
   return (
     <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -70,19 +152,18 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
             type="text"
-            placeholder="Search by name, location, or detention facility..."
+            placeholder="Start typing to search, or press Enter for immediate results..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleInputChange}
             className="pl-10 pr-24"
-            disabled={loading}
           />
           <Button 
             type="submit" 
             size="sm"
             className="absolute right-2 top-1/2 transform -translate-y-1/2"
-            disabled={loading}
+            disabled={isSearching}
           >
-            {loading ? (
+            {isSearching ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Searching...

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer } from '@/lib/supabase.server';
 import type { SearchParams } from '@/lib/supabase';
+
+const CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=59';
 
 export async function GET(request: Request) {
     try {
@@ -17,42 +19,109 @@ export async function GET(request: Request) {
             ageMax: searchParams.get('ageMax') ? parseInt(searchParams.get('ageMax')!) : undefined,
         };
 
-        console.log('Search params:', params);
+        // Build the base query
+        let query = supabaseServer
+            .from('detainees')
+            .select(`
+                id,
+                full_name,
+                date_of_detention,
+                last_seen_location,
+                detention_facility,
+                physical_description,
+                age_at_detention,
+                gender,
+                status,
+                last_update_date
+            `)
+            // Enable response caching in Supabase
+            .returns<any>();
 
-        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-            throw new Error('Missing Supabase environment variables');
+        // Apply search filters
+        if (params.searchText) {
+            const searchText = params.searchText.trim();
+            if (searchText) {
+                // Use websearch_to_tsquery for better performance
+                query = query.textSearch('search_vector', searchText, {
+                    type: 'websearch',
+                    config: 'simple'
+                });
+            }
         }
 
-        const { data, error } = await supabase.rpc('search_detainees', {
-            search_text: params.searchText,
-            detention_start_date: params.detentionStartDate,
-            detention_end_date: params.detentionEndDate,
-            detainee_status: params.status,
-            location: params.location,
-            gender_filter: params.gender,
-            age_min: params.ageMin,
-            age_max: params.ageMax,
+        // Apply exact match filters efficiently
+        const filters: Record<string, any> = {};
+        if (params.status) filters.status = params.status;
+        if (params.gender) filters.gender = params.gender;
+        if (Object.keys(filters).length > 0) {
+            query = query.match(filters);
+        }
+
+        // Apply range filters
+        if (params.detentionStartDate) {
+            query = query.gte('date_of_detention', params.detentionStartDate);
+        }
+        if (params.detentionEndDate) {
+            query = query.lte('date_of_detention', params.detentionEndDate);
+        }
+        if (params.ageMin !== undefined) {
+            query = query.gte('age_at_detention', params.ageMin);
+        }
+        if (params.ageMax !== undefined) {
+            query = query.lte('age_at_detention', params.ageMax);
+        }
+
+        // Add efficient ordering and limit
+        query = query
+            .order('full_name')
+            .limit(50);
+
+        const { data, error: searchError } = await query;
+
+        if (searchError) {
+            console.error('Search error:', searchError);
+            return NextResponse.json(
+                { 
+                    error: 'Search failed',
+                    details: searchError.message,
+                    code: searchError.code,
+                    message: 'Failed to perform search. Please try again.'
+                },
+                { 
+                    status: 500,
+                    headers: {
+                        'Cache-Control': 'no-store'
+                    }
+                }
+            );
+        }
+
+        const result = { 
+            results: data || [],
+            count: data?.length || 0,
+            params: params 
+        };
+
+        // Return response with caching headers
+        return NextResponse.json(result, {
+            headers: {
+                'Cache-Control': CACHE_CONTROL
+            }
         });
-
-        if (error) {
-            console.error('Supabase error:', error);
-            throw error;
-        }
-
-        console.log('Search results:', data?.length || 0, 'records found');
-        return NextResponse.json({ results: data || [] });
     } catch (error) {
-        console.error('Search error:', {
-            message: error instanceof Error ? error.message : 'Unknown error',
-            details: error,
-        });
-        
+        console.error('Search endpoint error:', error);
         return NextResponse.json(
             { 
-                error: 'Failed to perform search',
+                error: 'Search failed',
                 details: error instanceof Error ? error.message : 'Unknown error',
+                message: 'An unexpected error occurred. Please try again.'
             },
-            { status: 500 }
+            { 
+                status: 500,
+                headers: {
+                    'Cache-Control': 'no-store'
+                }
+            }
         );
     }
 }

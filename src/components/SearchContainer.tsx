@@ -8,14 +8,14 @@ import { Badge } from './ui/badge';
 import { Calendar, MapPin, Building2, User } from 'lucide-react';
 import { format } from 'date-fns';
 
-type Detainee = Database['public']['Functions']['search_detainees']['Returns'][number];
+type Detainee = Database['public']['Tables']['detainees']['Row'];
 
 export function SearchContainer() {
     const [results, setResults] = useState<Detainee[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const handleSearchAction = async (params: SearchParams) => {
+    const handleSearchAction = async (params: SearchParams, signal?: AbortSignal) => {
         setLoading(true);
         setError(null);
         
@@ -31,13 +31,31 @@ export function SearchContainer() {
             if (params.ageMin !== undefined) searchParams.set('ageMin', params.ageMin.toString());
             if (params.ageMax !== undefined) searchParams.set('ageMax', params.ageMax.toString());
             
-            const response = await fetch(`/api/search?${searchParams}`);
+            const response = await fetch(`/api/search?${searchParams}`, {
+                signal,
+                next: {
+                    revalidate: 0
+                }
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Search failed');
+            }
+
             const data = await response.json();
-            
-            if (!response.ok) throw new Error(data.error);
+            console.log('Search successful:', {
+                params: params,
+                results: data.results.length
+            });
             
             setResults(data.results);
         } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') {
+                // Ignore aborted requests
+                return;
+            }
+            console.error('Search error:', err);
             setError(err instanceof Error ? err.message : 'Failed to perform search');
             setResults([]);
         } finally {
@@ -100,16 +118,17 @@ export function SearchContainer() {
                                     {detainee.age_at_detention && (
                                         <div className="flex items-center text-sm">
                                             <User className="w-4 h-4 mr-2" />
-                                            <span>Age at detention: {detainee.age_at_detention}</span>
+                                            <span>Age at Detention: {detainee.age_at_detention}</span>
                                         </div>
                                     )}
-                                    <div className="flex items-center text-sm">
-                                        <User className="w-4 h-4 mr-2" />
-                                        <span>Gender: {detainee.gender.charAt(0).toUpperCase() + detainee.gender.slice(1)}</span>
-                                    </div>
+                                    {detainee.physical_description && (
+                                        <div className="text-sm">
+                                            <span className="font-medium">Description: </span>
+                                            {detainee.physical_description}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            
                             {detainee.search_rank > 0 && (
                                 <div className="mt-4 text-sm text-muted-foreground">
                                     Match score: {Math.round(detainee.search_rank * 100)}%
@@ -118,7 +137,7 @@ export function SearchContainer() {
                         </CardContent>
                     </Card>
                 ))}
-
+                
                 {results.length === 0 && !loading && !error && (
                     <div className="text-center p-8 text-muted-foreground">
                         No results found. Try adjusting your search terms or filters.
