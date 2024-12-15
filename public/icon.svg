@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="248" fill="#22c55e" stroke="#1a7741" stroke-width="16"/>
+  
+  <!-- Stylized dove symbol -->
+  <path d="M256 128
+           C 200 128, 160 168, 160 224
+           C 160 280, 200 320, 256 320
+           C 312 320, 352 280, 352 224
+           C 352 168, 312 128, 256 128
+           M 256 320
+           L 256 384
+           M 208 352
+           L 304 352"
+        stroke="white" 
+        stroke-width="24" 
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"/>
+</svg>

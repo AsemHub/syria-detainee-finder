@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Syria Detainee Finder
+
+A humanitarian web application dedicated to helping locate missing Syrian detainees and reuniting families. Built with Next.js 14, TypeScript, Tailwind CSS, and Shadcn UI components.
+
+## Features
+
+- 🔍 Advanced search functionality for detainee records
+- 📝 Submission form for new detainee information
+- 📊 Bulk CSV upload for organizations
+- 🌓 Dark/Light theme with custom green accent
+- 📱 Fully responsive design
+- ♿ Accessibility-first approach
+- 🔒 Secure data handling
+
+## Tech Stack
+
+- **Framework:** Next.js 14 with App Router
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS
+- **UI Components:** Shadcn UI
+- **Database:** Supabase (Phase 2)
+- **Authentication:** Supabase Auth (Phase 2)
+- **Search:** Supabase Full-text Search (Phase 2)
 
 ## Getting Started
 
-First, run the development server:
-
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yourusername/syria-detainee-finder.git
+cd syria-detainee-finder
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run the development server:
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Learn More
+## Development Commands
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run favicons` - Generate favicon assets
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+syria-detainee-finder/
+├── src/
+│   ├── app/             # Next.js App Router pages
+│   ├── components/      # React components
+│   ├── lib/            # Utility functions
+│   └── styles/         # Global styles
+├── public/             # Static assets
+└── scripts/           # Build and utility scripts
+```
 
-## Deploy on Vercel
+## Contributing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This project is open to contributions. Please follow these steps:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Built with [Next.js](https://nextjs.org)
+- UI components from [shadcn/ui](https://ui.shadcn.com)
+- Styling with [Tailwind CSS](https://tailwindcss.com)

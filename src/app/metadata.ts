@@ -1,0 +1,57 @@
+import { Metadata } from "next"
+
+export const siteConfig = {
+  name: "Syria Detainee Finder",
+  description: "A humanitarian web application to help locate missing Syrian detainees and reunite families",
+  keywords: [
+    "Syria",
+    "detainees",
+    "humanitarian",
+    "missing persons",
+    "human rights",
+    "families",
+    "search",
+    "documentation",
+  ],
+  authors: [
+    {
+      name: "Syria Detainee Finder Team",
+      url: "https://github.com/yourusername/syria-detainee-finder",
+    },
+  ],
+}
+
+export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  title: {
+    default: siteConfig.name,
+    template: `%s | ${siteConfig.name}`,
+  },
+  description: siteConfig.description,
+  keywords: siteConfig.keywords,
+  authors: siteConfig.authors,
+  creator: "Syria Detainee Finder Team",
+  icons: {
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" }
+    ],
+    shortcut: "/favicon-32x32.png",
+    apple: "/apple-touch-icon.png",
+  },
+  manifest: "/site.webmanifest",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "./",
+    title: siteConfig.name,
+    description: siteConfig.description,
+    siteName: siteConfig.name,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteConfig.name,
+    description: siteConfig.description,
+    creator: "@SyriaDetaineeFinder",
+  },
+}

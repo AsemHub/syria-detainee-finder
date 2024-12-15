@@ -1,0 +1,37 @@
+.rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: var(--accent);
+  --rdp-background-color: var(--accent);
+  --rdp-accent-color-dark: var(--accent-foreground);
+  --rdp-background-color-dark: var(--accent-foreground);
+  --rdp-outline: 2px solid var(--ring);
+  --rdp-outline-selected: 2px solid var(--accent);
+  margin: 1em;
+}
+
+.rdp-months {
+  display: flex;
+  justify-content: center;
+}
+
+.rdp-month {
+  background-color: var(--background);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.rdp-day_selected,
+.rdp-day_selected:focus-visible,
+.rdp-day_selected:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.rdp-day_today {
+  font-weight: bold;
+}
+
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
