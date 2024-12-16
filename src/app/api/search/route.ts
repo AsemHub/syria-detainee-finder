@@ -1,127 +1,61 @@
 import { NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabase.server';
+import { performSearch } from '@/lib/supabase.server';
 import type { SearchParams } from '@/lib/supabase';
 
-const CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=59';
+// Prevent response caching at the edge
+export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
+        console.log('Received search request');
+        const start = performance.now();
         
-        const params: SearchParams = {
-            searchText: searchParams.get('q') || undefined,
-            detentionStartDate: searchParams.get('startDate') || undefined,
-            detentionEndDate: searchParams.get('endDate') || undefined,
-            status: searchParams.get('status') as SearchParams['status'] || undefined,
-            location: searchParams.get('location') || undefined,
-            gender: searchParams.get('gender') as SearchParams['gender'] || undefined,
-            ageMin: searchParams.get('ageMin') ? parseInt(searchParams.get('ageMin')!) : undefined,
-            ageMax: searchParams.get('ageMax') ? parseInt(searchParams.get('ageMax')!) : undefined,
-        };
+        const { searchText } = await request.json();
+        console.log('Search parameters:', { searchText });
 
-        // Build the base query
-        let query = supabaseServer
-            .from('detainees')
-            .select(`
-                id,
-                full_name,
-                date_of_detention,
-                last_seen_location,
-                detention_facility,
-                physical_description,
-                age_at_detention,
-                gender,
-                status,
-                last_update_date
-            `)
-            // Enable response caching in Supabase
-            .returns<any>();
+        if (!searchText) {
+            return NextResponse.json({ error: 'Search text is required' }, { status: 400 });
+        }
 
-        // Apply search filters
-        if (params.searchText) {
-            const searchText = params.searchText.trim();
-            if (searchText) {
-                // Use websearch_to_tsquery for better performance
-                query = query.textSearch('search_vector', searchText, {
-                    type: 'websearch',
-                    config: 'simple'
-                });
+        try {
+            const results = await performSearch(searchText);
+            const duration = performance.now() - start;
+            console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);
+            return NextResponse.json(results);
+        } catch (searchError: any) {
+            console.error('Search operation failed:', {
+                error: searchError.message,
+                cause: searchError.cause?.message,
+                stack: searchError.stack
+            });
+
+            // Handle specific error cases
+            if (searchError.message.includes('timeout')) {
+                return NextResponse.json(
+                    { error: 'Search request timed out', details: 'Please try again' },
+                    { status: 504 }
+                );
+            } else if (searchError.message.includes('invalid')) {
+                return NextResponse.json(
+                    { error: 'Invalid search', details: searchError.message },
+                    { status: 400 }
+                );
             }
-        }
 
-        // Apply exact match filters efficiently
-        const filters: Record<string, any> = {};
-        if (params.status) filters.status = params.status;
-        if (params.gender) filters.gender = params.gender;
-        if (Object.keys(filters).length > 0) {
-            query = query.match(filters);
-        }
-
-        // Apply range filters
-        if (params.detentionStartDate) {
-            query = query.gte('date_of_detention', params.detentionStartDate);
-        }
-        if (params.detentionEndDate) {
-            query = query.lte('date_of_detention', params.detentionEndDate);
-        }
-        if (params.ageMin !== undefined) {
-            query = query.gte('age_at_detention', params.ageMin);
-        }
-        if (params.ageMax !== undefined) {
-            query = query.lte('age_at_detention', params.ageMax);
-        }
-
-        // Add efficient ordering and limit
-        query = query
-            .order('full_name')
-            .limit(50);
-
-        const { data, error: searchError } = await query;
-
-        if (searchError) {
-            console.error('Search error:', searchError);
             return NextResponse.json(
-                { 
-                    error: 'Search failed',
-                    details: searchError.message,
-                    code: searchError.code,
-                    message: 'Failed to perform search. Please try again.'
-                },
-                { 
-                    status: 500,
-                    headers: {
-                        'Cache-Control': 'no-store'
-                    }
-                }
+                { error: 'Search operation failed', details: searchError.message },
+                { status: 500 }
             );
         }
-
-        const result = { 
-            results: data || [],
-            count: data?.length || 0,
-            params: params 
-        };
-
-        // Return response with caching headers
-        return NextResponse.json(result, {
-            headers: {
-                'Cache-Control': CACHE_CONTROL
-            }
+    } catch (error: any) {
+        console.error('API route error:', {
+            error: error.message,
+            cause: error.cause?.message,
+            stack: error.stack
         });
-    } catch (error) {
-        console.error('Search endpoint error:', error);
         return NextResponse.json(
-            { 
-                error: 'Search failed',
-                details: error instanceof Error ? error.message : 'Unknown error',
-                message: 'An unexpected error occurred. Please try again.'
-            },
-            { 
-                status: 500,
-                headers: {
-                    'Cache-Control': 'no-store'
-                }
-            }
+            { error: 'Internal server error', details: error.message },
+            { status: 500 }
         );
     }
 }

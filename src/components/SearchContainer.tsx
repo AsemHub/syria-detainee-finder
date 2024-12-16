@@ -1,62 +1,47 @@
 "use client"
 
 import { useState } from 'react';
-import { SearchBox, SearchParams } from './SearchBox';
+import { SearchBox } from './SearchBox';
 import type { Database } from '@/lib/database.types';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Calendar, MapPin, Building2, User } from 'lucide-react';
 import { format } from 'date-fns';
 
-type Detainee = Database['public']['Tables']['detainees']['Row'];
+type Detainee = Database['public']['Tables']['detainees']['Row']
 
 export function SearchContainer() {
     const [results, setResults] = useState<Detainee[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const handleSearchAction = async (params: SearchParams, signal?: AbortSignal) => {
+    const handleSearchAction = async (searchText: string) => {
         setLoading(true);
         setError(null);
         
         try {
-            const searchParams = new URLSearchParams();
-            
-            if (params.searchText) searchParams.set('q', params.searchText);
-            if (params.detentionStartDate) searchParams.set('startDate', params.detentionStartDate);
-            if (params.detentionEndDate) searchParams.set('endDate', params.detentionEndDate);
-            if (params.status) searchParams.set('status', params.status);
-            if (params.location) searchParams.set('location', params.location);
-            if (params.gender) searchParams.set('gender', params.gender);
-            if (params.ageMin !== undefined) searchParams.set('ageMin', params.ageMin.toString());
-            if (params.ageMax !== undefined) searchParams.set('ageMax', params.ageMax.toString());
-            
-            const response = await fetch(`/api/search?${searchParams}`, {
-                signal,
-                next: {
-                    revalidate: 0
-                }
+            const response = await fetch('/api/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ searchText }),
             });
 
             if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Search failed');
+                throw new Error(`Search failed: ${response.statusText}`);
             }
 
             const data = await response.json();
-            console.log('Search successful:', {
-                params: params,
-                results: data.results.length
-            });
             
-            setResults(data.results);
-        } catch (err) {
-            if (err instanceof Error && err.name === 'AbortError') {
-                // Ignore aborted requests
-                return;
+            if (data.error) {
+                throw new Error(data.error);
             }
-            console.error('Search error:', err);
-            setError(err instanceof Error ? err.message : 'Failed to perform search');
+
+            setResults(data || []);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An error occurred');
+            console.error('Error handling search results:', err);
             setResults([]);
         } finally {
             setLoading(false);
@@ -64,86 +49,103 @@ export function SearchContainer() {
     };
 
     return (
-        <div className="w-full max-w-4xl mx-auto space-y-6">
+        <div className="w-full max-w-4xl mx-auto space-y-8">
             <SearchBox onSearchAction={handleSearchAction} loading={loading} />
             
             {error && (
-                <div className="p-4 text-red-500 bg-red-50 rounded-lg">
+                <div className="text-red-500 text-center">
                     {error}
                 </div>
             )}
-            
-            <div className="space-y-4">
-                {results.map((detainee) => (
-                    <Card key={detainee.id}>
-                        <CardContent className="p-6">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="text-xl font-semibold mb-2">
-                                        {detainee.full_name}
-                                    </h3>
-                                    <div className="flex items-center text-sm text-muted-foreground mb-4">
-                                        <MapPin className="w-4 h-4 mr-1" />
-                                        Last seen: {detainee.last_seen_location}
+
+            {results && results.length > 0 ? (
+                <div className="space-y-4">
+                    {results.map((detainee) => (
+                        <Card key={detainee.id}>
+                            <CardContent className="p-6">
+                                <div className="flex flex-col space-y-4">
+                                    <div className="flex justify-between items-start">
+                                        <h3 className="text-xl font-semibold">{detainee.full_name}</h3>
+                                        <Badge variant={
+                                            detainee.status === 'missing' ? 'destructive' :
+                                            detainee.status === 'released' ? 'success' : 'secondary'
+                                        }>
+                                            {detainee.status.charAt(0).toUpperCase() + detainee.status.slice(1)}
+                                        </Badge>
                                     </div>
-                                </div>
-                                <Badge variant={
-                                    detainee.status === 'missing' ? 'destructive' :
-                                    detainee.status === 'released' ? 'success' :
-                                    'secondary'
-                                }>
-                                    {detainee.status.charAt(0).toUpperCase() + detainee.status.slice(1)}
-                                </Badge>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4 mt-4">
-                                <div className="space-y-2">
-                                    <div className="flex items-center text-sm">
-                                        <Calendar className="w-4 h-4 mr-2" />
-                                        <span>
-                                            Detention Date: {detainee.date_of_detention ? 
-                                                format(new Date(detainee.date_of_detention), 'PP') :
-                                                'Unknown'
-                                            }
-                                        </span>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {detainee.date_of_detention && (
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="h-4 w-4" />
+                                                <span>Detained: {format(new Date(detainee.date_of_detention), 'PP')}</span>
+                                            </div>
+                                        )}
+                                        
+                                        <div className="flex items-center gap-2">
+                                            <MapPin className="h-4 w-4" />
+                                            <span>Last seen: {detainee.last_seen_location}</span>
+                                        </div>
+                                        
+                                        {detainee.detention_facility && (
+                                            <div className="flex items-center gap-2">
+                                                <Building2 className="h-4 w-4" />
+                                                <span>Facility: {detainee.detention_facility}</span>
+                                            </div>
+                                        )}
+                                        
+                                        {detainee.age_at_detention && (
+                                            <div className="flex items-center gap-2">
+                                                <User className="h-4 w-4" />
+                                                <span>Age at detention: {detainee.age_at_detention}</span>
+                                            </div>
+                                        )}
+
+                                        {detainee.gender && (
+                                            <div className="flex items-center gap-2">
+                                                <User className="h-4 w-4" />
+                                                <span>Gender: {detainee.gender}</span>
+                                            </div>
+                                        )}
+
+                                        {detainee.last_update_date && (
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="h-4 w-4" />
+                                                <span>Last updated: {format(new Date(detainee.last_update_date), 'PP')}</span>
+                                            </div>
+                                        )}
                                     </div>
-                                    {detainee.detention_facility && (
-                                        <div className="flex items-center text-sm">
-                                            <Building2 className="w-4 h-4 mr-2" />
-                                            <span>Facility: {detainee.detention_facility}</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    {detainee.age_at_detention && (
-                                        <div className="flex items-center text-sm">
-                                            <User className="w-4 h-4 mr-2" />
-                                            <span>Age at Detention: {detainee.age_at_detention}</span>
-                                        </div>
-                                    )}
+
                                     {detainee.physical_description && (
-                                        <div className="text-sm">
-                                            <span className="font-medium">Description: </span>
-                                            {detainee.physical_description}
+                                        <div className="mt-4">
+                                            <h4 className="text-sm font-semibold mb-2">Physical Description</h4>
+                                            <p className="text-muted-foreground">{detainee.physical_description}</p>
+                                        </div>
+                                    )}
+
+                                    {detainee.additional_notes && (
+                                        <div className="mt-4">
+                                            <h4 className="text-sm font-semibold mb-2">Additional Notes</h4>
+                                            <p className="text-muted-foreground">{detainee.additional_notes}</p>
+                                        </div>
+                                    )}
+
+                                    {detainee.contact_info && (
+                                        <div className="mt-4">
+                                            <h4 className="text-sm font-semibold mb-2">Contact Information</h4>
+                                            <p className="text-muted-foreground">{detainee.contact_info}</p>
                                         </div>
                                     )}
                                 </div>
-                            </div>
-                            {detainee.search_rank > 0 && (
-                                <div className="mt-4 text-sm text-muted-foreground">
-                                    Match score: {Math.round(detainee.search_rank * 100)}%
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                ))}
-                
-                {results.length === 0 && !loading && !error && (
-                    <div className="text-center p-8 text-muted-foreground">
-                        No results found. Try adjusting your search terms or filters.
-                    </div>
-                )}
-            </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            ) : !loading && (
+                <div className="text-center text-gray-500">
+                    No results found
+                </div>
+            )}
         </div>
     );
 }

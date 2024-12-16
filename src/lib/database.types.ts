@@ -6,6 +6,9 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type DetaineeStatus = 'detained' | 'released' | 'deceased' | 'unknown';
+export type DetaineeGender = 'male' | 'female' | 'unknown';
+
 export interface Database {
   public: {
     Tables: {
@@ -18,12 +21,12 @@ export interface Database {
           detention_facility: string | null
           physical_description: string | null
           age_at_detention: number | null
-          gender: 'male' | 'female' | 'other'
-          status: 'missing' | 'released' | 'deceased'
-          last_update_date: string
-          contact_info: string
-          additional_notes: string | null
+          status: DetaineeStatus
+          gender: DetaineeGender
+          notes: string | null
           created_at: string
+          updated_at: string
+          search_rank?: number
         }
         Insert: {
           id?: string
@@ -33,12 +36,11 @@ export interface Database {
           detention_facility?: string | null
           physical_description?: string | null
           age_at_detention?: number | null
-          gender: 'male' | 'female' | 'other'
-          status: 'missing' | 'released' | 'deceased'
-          last_update_date?: string
-          contact_info: string
-          additional_notes?: string | null
+          status?: DetaineeStatus
+          gender?: DetaineeGender
+          notes?: string | null
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -48,12 +50,11 @@ export interface Database {
           detention_facility?: string | null
           physical_description?: string | null
           age_at_detention?: number | null
-          gender?: 'male' | 'female' | 'other'
-          status?: 'missing' | 'released' | 'deceased'
-          last_update_date?: string
-          contact_info?: string
-          additional_notes?: string | null
+          status?: DetaineeStatus
+          gender?: DetaineeGender
+          notes?: string | null
           created_at?: string
+          updated_at?: string
         }
       }
       documents: {
@@ -61,37 +62,31 @@ export interface Database {
           id: string
           detainee_id: string
           file_url: string
-          document_type: string | null
-          submission_date: string | null
+          document_type: string
+          submission_date: string
           description: string | null
           file_name: string
-          file_size: number
-          mime_type: string
-          created_at: string | null
+          created_at: string
         }
         Insert: {
           id?: string
           detainee_id: string
           file_url: string
-          document_type?: string | null
-          submission_date?: string | null
+          document_type: string
+          submission_date?: string
           description?: string | null
           file_name: string
-          file_size: number
-          mime_type: string
-          created_at?: string | null
+          created_at?: string
         }
         Update: {
           id?: string
           detainee_id?: string
           file_url?: string
-          document_type?: string | null
-          submission_date?: string | null
+          document_type?: string
+          submission_date?: string
           description?: string | null
           file_name?: string
-          file_size?: number
-          mime_type?: string
-          created_at?: string | null
+          created_at?: string
         }
       }
     }
@@ -101,14 +96,12 @@ export interface Database {
     Functions: {
       search_detainees: {
         Args: {
-          search_text?: string | null
-          detention_start_date?: string | null
-          detention_end_date?: string | null
-          detainee_status?: 'missing' | 'released' | 'deceased' | null
-          location?: string | null
-          gender_filter?: 'male' | 'female' | 'other' | null
+          search_query?: string | null
+          status_filter?: DetaineeStatus | null
+          gender_filter?: DetaineeGender | null
           age_min?: number | null
           age_max?: number | null
+          location_filter?: string | null
         }
         Returns: {
           id: string
@@ -116,10 +109,13 @@ export interface Database {
           date_of_detention: string | null
           last_seen_location: string
           detention_facility: string | null
-          status: 'missing' | 'released' | 'deceased'
-          gender: 'male' | 'female' | 'other'
+          physical_description: string | null
           age_at_detention: number | null
-          last_update_date: string
+          status: DetaineeStatus
+          gender: DetaineeGender
+          notes: string | null
+          created_at: string
+          updated_at: string
           search_rank: number
         }[]
       }
