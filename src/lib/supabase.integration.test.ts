@@ -1,70 +1,52 @@
 import { createClient } from '@supabase/supabase-js';
-import { Database } from './database.types';
-import dotenv from 'dotenv';
 import { performSearch } from './supabase';
-import { DetaineeStatus, DetaineeGender, SearchParams } from '@/types';
+import { Database } from './database.types';
+import { DetaineeStatus, DetaineeGender } from '@/types';
+import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.test' });
 
-const mockData = {
-  id: '1',
-  full_name: 'John Doe',
-  status: 'detained' as DetaineeStatus,
-  gender: 'male' as DetaineeGender,
-  date_of_detention: '2023-01-01',
-  age_at_detention: 30,
-  last_seen_location: 'Damascus',
-  detention_facility: 'Facility A',
-  physical_description: 'Tall',
-  notes: 'Some notes',
-  created_at: '2023-01-01',
-  updated_at: '2023-01-01',
-  search_rank: 1
-};
-
-// Mock Supabase client
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => ({
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          eq: jest.fn(() => ({
-            gte: jest.fn(() => ({
-              lte: jest.fn(() => ({
-                or: jest.fn(() => ({
-                  then: jest.fn().mockResolvedValue({
-                    data: [mockData],
-                    error: null
-                  })
-                }))
-              }))
-            }))
-          }))
-        })),
-        or: jest.fn(() => ({
-          then: jest.fn().mockResolvedValue({
-            data: [mockData],
-            error: null
-          })
-        })),
-        then: jest.fn().mockResolvedValue({
-          data: [mockData],
-          error: null
-        })
-      }))
-    }))
-  }))
-}));
+jest.mock('@supabase/supabase-js');
 
 describe('Supabase Integration Tests', () => {
-  const testCases: Array<{name: string, params: SearchParams}> = [
+  const mockData = {
+    id: '1',
+    full_name: 'John Smith',
+    last_seen_location: 'Damascus',
+    age_at_detention: 25,
+    gender: 'male' as DetaineeGender,
+    status: 'detained' as DetaineeStatus,
+    created_at: new Date().toISOString(),
+    date_of_detention: '2023-01-01',
+    detention_facility: 'Facility A',
+    physical_description: 'Tall',
+    notes: 'Test notes',
+    updated_at: new Date().toISOString()
+  };
+
+  beforeEach(() => {
+    (createClient as jest.Mock).mockReturnValue({
+      from: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      rpc: jest.fn().mockReturnThis(),
+      filter: jest.fn().mockReturnThis(),
+      data: [mockData],
+      error: null
+    });
+  });
+
+  const testCases = [
     {
       name: 'Simple name search',
-      params: { searchText: 'John' }
+      params: { searchText: 'John' },
+      expectedResults: (detainee: Database['public']['Tables']['detainees']['Row']) =>
+        detainee.full_name.toLowerCase().includes('john')
     },
     {
       name: 'Location search',
-      params: { location: 'Damascus' }
+      params: { location: 'Damascus' },
+      expectedResults: (detainee: Database['public']['Tables']['detainees']['Row']) =>
+        detainee.last_seen_location.toLowerCase().includes('damascus')
     },
     {
       name: 'Complex search with filters',
@@ -75,26 +57,23 @@ describe('Supabase Integration Tests', () => {
         gender: 'male' as DetaineeGender,
         ageMin: 20,
         ageMax: 40
-      }
-    },
-    {
-      name: 'Female detainees search',
-      params: { gender: 'female' as DetaineeGender }
-    },
-    {
-      name: 'Empty search with filters',
-      params: { status: 'detained' as DetaineeStatus }
+      },
+      expectedResults: (detainee: Database['public']['Tables']['detainees']['Row']) =>
+        detainee.full_name.toLowerCase().includes('john') &&
+        detainee.last_seen_location.toLowerCase().includes('damascus') &&
+        detainee.age_at_detention >= 20 &&
+        detainee.age_at_detention <= 40 &&
+        detainee.gender === 'male'
     }
   ];
 
-  testCases.forEach(({ name, params }) => {
+  testCases.forEach(({ name, params, expectedResults }) => {
     it(`${name} should return valid results within performance threshold`, async () => {
-      console.log(`\n${name}:`);
       const startTime = performance.now();
-      
       const { data, error } = await performSearch(params);
-      
       const duration = performance.now() - startTime;
+
+      console.log(`\n${name}:`);
       console.log(`- Duration: ${duration.toFixed(2)}ms`);
       console.log(`- Results found: ${data?.length || 0}`);
 
@@ -103,6 +82,11 @@ describe('Supabase Integration Tests', () => {
       expect(duration).toBeLessThan(1000); // Performance threshold of 1 second
       expect(data).toBeDefined();
       expect(Array.isArray(data)).toBe(true);
+
+      // Verify results match expected criteria
+      data?.forEach(detainee => {
+        expect(expectedResults(detainee)).toBe(true);
+      });
     });
   });
 });

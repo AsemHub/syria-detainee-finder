@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabase.server"
 import { z } from "zod"
+import { Database, DetaineeGender, DetaineeStatus, Detainee } from "@/types"
 
 // In-memory store for rate limiting
 const submissionTimes = new Map<string, number[]>();
@@ -37,15 +38,14 @@ const submitSchema = z.object({
     .min(0, "Age cannot be negative")
     .max(120, "Age must be less than 120")
     .optional(),
-  gender: z.enum(["male", "female", "other"]),
-  status: z.enum(["missing", "released", "deceased"]),
+  gender: z.enum(["male", "female", "unknown"] as const),
+  status: z.enum(["detained", "released", "deceased", "unknown"] as const),
   contact_info: z.string()
-    .min(2, "Contact information is required")
-    .max(500, "Contact information must be less than 500 characters"),
+    .max(50, "Contact info must be less than 50 characters"),
   additional_notes: z.string()
     .max(2000, "Notes must be less than 2000 characters")
     .optional(),
-})
+}) satisfies z.ZodType<Omit<Detainee, "id" | "created_at" | "last_update_date" | "search_vector">>;
 
 export async function POST(request: Request) {
   try {
@@ -92,11 +92,9 @@ export async function POST(request: Request) {
         console.log('Attempting database insert...');
         const { data, error: insertError } = await supabaseServer
           .from('detainees')
-          .insert([{
+          .insert({
             ...validatedData,
-            last_update_date: new Date().toISOString(),
-            created_at: new Date().toISOString()
-          }])
+          } satisfies Database['public']['Tables']['detainees']['Insert'])
           .select()
           .single();
 
@@ -119,15 +117,6 @@ export async function POST(request: Request) {
         }
 
         console.log('Database insert successful:', data);
-
-        // Manually refresh the materialized view
-        const { error: refreshError } = await supabaseServer
-          .rpc('refresh_detainees_search_mv');
-
-        if (refreshError) {
-          console.log('Failed to refresh materialized view:', refreshError);
-          // Don't return error here, the insert was successful
-        }
 
         // Record the submission time for rate limiting
         const submissions = submissionTimes.get(ip) || [];

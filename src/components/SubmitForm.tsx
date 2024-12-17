@@ -24,7 +24,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, AlertCircle } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const formSchema = z.object({
   full_name: z.string()
@@ -60,8 +69,21 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>
 
+interface DetaineeMatch {
+  id: string
+  full_name: string
+  status: string
+  last_seen_location: string
+  date_of_detention?: string
+}
+
 export function SubmitForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isChecking, setIsChecking] = useState(false)
+  const [potentialMatches, setPotentialMatches] = useState<{
+    exact: DetaineeMatch[]
+    similar: DetaineeMatch[]
+  } | null>(null)
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -92,10 +114,44 @@ export function SubmitForm() {
       contact_info: "",
       additional_notes: "",
     })
+    setPotentialMatches(null)
+  }
+
+  const checkDuplicates = async (name: string) => {
+    setIsChecking(true)
+    try {
+      const response = await fetch("/api/check-duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full_name: name }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to check for duplicates")
+      }
+
+      const data = await response.json()
+      setPotentialMatches(data.matches)
+      
+      return data.matches.exact.length > 0 || data.matches.similar.length > 0
+    } catch (error) {
+      console.error("Duplicate check error:", error)
+      return false
+    } finally {
+      setIsChecking(false)
+    }
   }
 
   async function onSubmit(values: FormData) {
-    if (isSubmitting) return
+    if (isSubmitting || isChecking) return
+    
+    // Check for duplicates first
+    const hasDuplicates = await checkDuplicates(values.full_name)
+    
+    if (hasDuplicates) {
+      // Show the duplicates dialog
+      return
+    }
     
     setIsSubmitting(true)
     try {
@@ -126,14 +182,20 @@ export function SubmitForm() {
 
       toast({
         title: "Success",
-        description: data.message || "Detainee information has been submitted successfully.",
+        description: <div data-testid="submit-status">{data.message || "Detainee information has been submitted successfully."}</div>,
+        data: {
+          "data-testid": "submit-status"
+        }
       })
       resetForm()
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to submit detainee information. Please try again.",
+        description: <div data-testid="submit-status">{error instanceof Error ? error.message : "Failed to submit detainee information. Please try again."}</div>,
         variant: "destructive",
+        data: {
+          "data-testid": "submit-status"
+        }
       })
     } finally {
       setIsSubmitting(false)
@@ -141,94 +203,94 @@ export function SubmitForm() {
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <FormField
-          control={form.control}
-          name="full_name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Full Name</FormLabel>
-              <FormControl>
-                <Input placeholder="Enter full name" {...field} />
-              </FormControl>
-              <FormDescription>
-                Enter the detainee&apos;s full name as accurately as possible
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <FormField
+            control={form.control}
+            name="full_name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Full Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Enter full name" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Enter the detainee&apos;s full name as accurately as possible
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="date_of_detention"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Date of Detention</FormLabel>
-              <FormControl>
-                <Input type="date" {...field} />
-              </FormControl>
-              <FormDescription>
-                Approximate date if exact date is unknown
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="date_of_detention"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Date of Detention</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Approximate date if exact date is unknown
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="last_seen_location"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Last Seen Location</FormLabel>
-              <FormControl>
-                <Input placeholder="City, Area, or specific location" {...field} />
-              </FormControl>
-              <FormDescription>
-                Where was the person last seen?
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="last_seen_location"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Last Seen Location</FormLabel>
+                <FormControl>
+                  <Input placeholder="City, Area, or specific location" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Where was the person last seen?
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="detention_facility"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Detention Facility</FormLabel>
-              <FormControl>
-                <Input placeholder="If known" {...field} />
-              </FormControl>
-              <FormDescription>
-                Name of the detention facility if known
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="detention_facility"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Detention Facility</FormLabel>
+                <FormControl>
+                  <Input placeholder="If known" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Name of the detention facility if known
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="physical_description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Physical Description</FormLabel>
-              <FormControl>
-                <Textarea 
-                  placeholder="Height, build, distinguishing features, etc."
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="physical_description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Physical Description</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Height, build, distinguishing features, etc."
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="age_at_detention"
@@ -236,7 +298,7 @@ export function SubmitForm() {
               <FormItem>
                 <FormLabel>Age at Detention</FormLabel>
                 <FormControl>
-                  <Input type="number" min="0" max="120" {...field} />
+                  <Input type="number" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -265,79 +327,151 @@ export function SubmitForm() {
               </FormItem>
             )}
           />
-        </div>
 
-        <FormField
-          control={form.control}
-          name="status"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Current Status</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Current Status</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="missing">Missing</SelectItem>
+                    <SelectItem value="released">Released</SelectItem>
+                    <SelectItem value="deceased">Deceased</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="contact_info"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Contact Information</FormLabel>
                 <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
+                  <Textarea
+                    placeholder="Your contact information for verification"
+                    {...field}
+                  />
                 </FormControl>
-                <SelectContent>
-                  <SelectItem value="missing">Missing</SelectItem>
-                  <SelectItem value="released">Released</SelectItem>
-                  <SelectItem value="deceased">Deceased</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                <FormDescription>
+                  This will not be publicly visible
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="contact_info"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Contact Information</FormLabel>
-              <FormControl>
-                <Textarea 
-                  placeholder="Contact details for updates about the detainee"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                This information will be used to contact you if there are updates
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+          <FormField
+            control={form.control}
+            name="additional_notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Additional Notes</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Any additional information that might be helpful"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <FormField
-          control={form.control}
-          name="additional_notes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Additional Notes</FormLabel>
-              <FormControl>
-                <Textarea 
-                  placeholder="Any additional information that might be helpful"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+          {isChecking && (
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertTitle>Checking for duplicates...</AlertTitle>
+              <AlertDescription>
+                Please wait while we check for existing records.
+              </AlertDescription>
+            </Alert>
           )}
-        />
 
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Submitting...
-            </>
-          ) : (
-            "Submit Information"
+          {potentialMatches && (potentialMatches.exact.length > 0 || potentialMatches.similar.length > 0) && (
+            <Dialog open={true} onOpenChange={() => setPotentialMatches(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Potential Matching Records Found</DialogTitle>
+                  <DialogDescription>
+                    We found some records that might be related to this person.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {potentialMatches.exact.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Exact Matches:</h4>
+                    {potentialMatches.exact.map((match, index) => (
+                      <div key={index} className="p-4 border rounded-lg">
+                        <p><strong>Name:</strong> {match.full_name}</p>
+                        <p><strong>Status:</strong> {match.status}</p>
+                        <p><strong>Last Seen:</strong> {match.last_seen_location}</p>
+                        {match.date_of_detention && (
+                          <p><strong>Detention Date:</strong> {new Date(match.date_of_detention).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {potentialMatches.similar.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Similar Names:</h4>
+                    {potentialMatches.similar.map((match, index) => (
+                      <div key={index} className="p-4 border rounded-lg">
+                        <p><strong>Name:</strong> {match.full_name}</p>
+                        <p><strong>Status:</strong> {match.status}</p>
+                        <p><strong>Last Seen:</strong> {match.last_seen_location}</p>
+                        {match.date_of_detention && (
+                          <p><strong>Detention Date:</strong> {new Date(match.date_of_detention).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <DialogFooter className="sm:justify-start">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setPotentialMatches(null)}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setPotentialMatches(null)
+                      form.handleSubmit(onSubmit)()
+                    }}
+                  >
+                    Submit Anyway
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
-        </Button>
-      </form>
-    </Form>
+
+          <Button type="submit" disabled={isSubmitting || isChecking}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit"
+            )}
+          </Button>
+        </form>
+      </Form>
+    </>
   )
 }

@@ -1,20 +1,21 @@
+export type DetaineeStatus = 'detained' | 'released' | 'deceased' | 'unknown';
+export type DetaineeGender = 'male' | 'female' | 'other' | 'unknown';
+
 export interface Detainee {
   id: string;
-  name: string;
-  location: string;
-  status: string;
-  gender: string;
-  age: number;
-  detentionDate: string;
-  releaseDate?: string;
-  lastSeenDate?: string;
-  details?: string;
+  full_name: string;
+  date_of_detention: string | null;
+  last_seen_location: string;
+  detention_facility: string | null;
+  physical_description: string | null;
+  age_at_detention: number | null;
+  gender: DetaineeGender;
+  status: DetaineeStatus;
+  additional_info: string | null;
   created_at: string;
   updated_at: string;
+  search_rank?: number;
 }
-
-export type DetaineeStatus = 'detained' | 'released' | 'deceased' | 'unknown';
-export type DetaineeGender = 'male' | 'female' | 'unknown';
 
 export interface SearchParams {
   searchText?: string;
