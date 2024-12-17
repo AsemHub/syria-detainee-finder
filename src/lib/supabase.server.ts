@@ -191,60 +191,134 @@ export async function performSearch(searchText: string) {
       return cachedResult;
     }
 
-    // First try a quick ILIKE search
-    const quickSearchOperation = async () => {
-      const { data, error } = await supabaseServer
-        .from('detainees')
-        .select()
-        .or(`full_name.ilike.%${searchText}%,last_seen_location.ilike.%${searchText}%`)
-        .limit(20);
+    const searchOperation = async () => {
+      // Normalize text for better matching
+      const normalizedText = searchText.toLowerCase().trim();
+      let results = new Map();
 
-      if (error) throw error;
-      return data;
+      try {
+        // Phase 1: Quick prefix and exact matches (fastest)
+        const prefixSearch = await supabaseServer
+          .rpc('search_detainees_by_prefix', { search_prefix: searchText })
+          .maybeSingle();
+
+        if (!prefixSearch.error && prefixSearch.data) {
+          console.log('Found results with exact prefix search');
+          results.set(prefixSearch.data.id, prefixSearch.data);
+          return Array.from(results.values());
+        }
+
+        // If text was normalized, try normalized prefix search
+        if (searchText !== normalizedText) {
+          const normalizedPrefixSearch = await supabaseServer
+            .rpc('search_detainees_by_prefix', { search_prefix: normalizedText })
+            .maybeSingle();
+
+          if (!normalizedPrefixSearch.error && normalizedPrefixSearch.data) {
+            console.log('Found results with normalized prefix search');
+            results.set(normalizedPrefixSearch.data.id, normalizedPrefixSearch.data);
+            return Array.from(results.values());
+          }
+        }
+
+        // Phase 2: Try trigram search (still fast)
+        const trigramSearch = await supabaseServer
+          .from('detainees_search_mv')
+          .select()
+          .or(`name_trigrams.ilike.%${normalizedText}%`)
+          .limit(10);
+
+        if (!trigramSearch.error && trigramSearch.data?.length > 0) {
+          console.log('Found results with trigram search');
+          trigramSearch.data.forEach(r => results.set(r.id, r));
+          return Array.from(results.values());
+        }
+
+        // Phase 3: Full-text search based on text type
+        const isArabic = /[\u0600-\u06FF]/.test(searchText);
+        const searchPromise = isArabic
+          ? supabaseServer
+              .from('detainees_search_mv')
+              .select()
+              .textSearch('arabic_fts_document', searchText, {
+                type: 'websearch',
+                config: 'arabic'
+              })
+              .order('last_update_date', { ascending: false })
+              .limit(10)
+          : supabaseServer
+              .from('detainees_search_mv')
+              .select()
+              .textSearch('english_fts_document', searchText, {
+                type: 'websearch',
+                config: 'english'
+              })
+              .order('last_update_date', { ascending: false })
+              .limit(10);
+
+        const ftsSearch = await searchPromise;
+
+        if (!ftsSearch.error && ftsSearch.data?.length > 0) {
+          console.log(`Found results with ${isArabic ? 'Arabic' : 'English'} search`);
+          ftsSearch.data.forEach(r => {
+            if (!results.has(r.id)) results.set(r.id, r);
+          });
+        }
+
+        // If still no results and text is long enough, try fuzzy search
+        if (results.size === 0 && normalizedText.length >= 3) {
+          const fuzzySearch = await supabaseServer
+            .from('detainees_search_mv')
+            .select()
+            .or(
+              `name_trigrams % '${normalizedText}',` +
+              `location_trigrams % '${normalizedText}'`
+            )
+            .order('last_update_date', { ascending: false })
+            .limit(5);
+
+          if (!fuzzySearch.error && fuzzySearch.data?.length > 0) {
+            console.log('Found results with fuzzy search');
+            fuzzySearch.data.forEach(r => results.set(r.id, r));
+          }
+        }
+
+        return Array.from(results.values());
+      } catch (error: any) {
+        // Log specific error for debugging
+        console.error('Search operation error:', {
+          phase: results.size > 0 ? 'secondary' : 'primary',
+          error: error.message,
+          code: error.code
+        });
+        
+        // If we have partial results, return them instead of failing
+        if (results.size > 0) {
+          console.log('Returning partial results due to error');
+          return Array.from(results.values());
+        }
+        throw error;
+      }
     };
 
-    let results = await retryOperation(quickSearchOperation, 2, 2000);
-    
-    // If no results from quick search, try full-text search
-    if (!results?.length) {
-      console.log('No results from quick search, trying full-text search...');
-      
-      const fullTextOperation = async () => {
-        const { data, error } = await supabaseServer
-          .from('detainees')
-          .select(`
-            id,
-            full_name,
-            date_of_detention,
-            last_seen_location,
-            detention_facility,
-            physical_description,
-            age_at_detention,
-            gender,
-            status,
-            last_update_date,
-            contact_info,
-            additional_notes,
-            created_at
-          `)
-          .textSearch('search_vector', searchText, {
-            type: 'websearch',
-            config: 'english'
-          })
-          .order('last_update_date', { ascending: false });
+    // Dynamic timeout based on search phase and text type
+    const baseTimeout = 2000;
+    const timeout = Math.min(
+      baseTimeout + 
+      (searchText.length * 150) + // Less time per character
+      (/[\u0600-\u06FF]/.test(searchText) ? 800 : 0), // Less extra time for Arabic
+      4000 // Lower maximum timeout
+    );
 
-        if (error) throw error;
-        return data;
-      };
-
-      results = await retryOperation(fullTextOperation, 3, 4000);
-    }
+    const results = await retryOperation(searchOperation, 2, timeout);
 
     const duration = performance.now() - start;
     console.log(`Search completed in ${duration.toFixed(2)}ms with ${results?.length || 0} results`);
     
     // Cache successful results
-    searchCache.set(cacheKey, results);
+    if (results?.length > 0) {
+      searchCache.set(cacheKey, results);
+    }
     return results || [];
 
   } catch (error: any) {

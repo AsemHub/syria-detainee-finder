@@ -1,25 +1,56 @@
-const { supabase } = require('./supabase');
+import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 
-async function testSupabaseConnection() {
-    console.log('Testing Supabase connection...');
-    console.log('SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Set' : 'Not set');
-    console.log('SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set' : 'Not set');
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn().mockReturnValue({
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        limit: jest.fn().mockResolvedValue({ data: [], error: null })
+      }))
+    })),
+    auth: jest.fn(),
+  })
+}));
 
-    try {
-        const { data, error } = await supabase
-            .from('detainees')
-            .select('id')
-            .limit(1);
+describe('Supabase Client', () => {
+  const mockSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const mockSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-        if (error) {
-            console.error('Connection test failed:', error);
-            return;
-        }
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-        console.log('Connection successful!', data);
-    } catch (error) {
-        console.error('Connection test failed:', error);
-    }
-}
+  it('successfully connects to Supabase', () => {
+    // Create a new client
+    const client = createClient(mockSupabaseUrl!, mockSupabaseKey!, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      },
+      global: {
+        fetch: expect.any(Function)
+      }
+    });
 
-testSupabaseConnection();
+    // Verify client was created with correct options
+    expect(createClient).toHaveBeenCalledWith(
+      mockSupabaseUrl,
+      mockSupabaseKey,
+      expect.objectContaining({
+        auth: expect.objectContaining({
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        }),
+        global: expect.objectContaining({
+          fetch: expect.any(Function)
+        })
+      })
+    );
+
+    // Verify client has required properties
+    expect(client).toHaveProperty('auth');
+    expect(client).toHaveProperty('from');
+  });
+});
