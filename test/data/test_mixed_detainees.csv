@@ -1,0 +1,7 @@
+full_name,date_of_birth,place_of_birth,gender,nationality,arrest_date,arrest_location,detaining_authority,prison_location,legal_status,health_status,notes
+"Ahmad Ali",1985-03-15,"Damascus","Male","Syrian",2012-08-20,"Aleppo","Security Forces","Sednaya Prison","Detained","Unknown","Last seen during arrest"
+"Samira Khalil",1992-04-18,"Raqqa","Female","Syrian",2015-06-25,"Raqqa","ISIS","Unknown","Missing","Poor","Family received information about deteriorating health"
+"Youssef Rahman",1983-09-30,"Deir ez-Zor","Male","Syrian",2014-03-12,"Deir ez-Zor","Government Forces","Palmyra Prison","Released","Good","Released in prisoner exchange"
+"Nour Al-Din",1995-12-08,"Latakia","Male","Syrian",2016-11-03,"Damascus","Air Force Intelligence","Mezzeh Prison","Detained","Unknown","Arrested at checkpoint"
+"Aisha Bakr",1988-07-22,"Daraa","Female","Syrian",2013-08-15,"Daraa","Military Intelligence","Branch 215","Missing","Unknown","Last seen at intelligence branch"
+"Mohammed Ibrahim",1978-07-02,"Idlib","Male","Syrian",2011-12-15,"Damascus","Security Forces","Damascus Central Prison","Detained","Fair","Regular family visits allowed"

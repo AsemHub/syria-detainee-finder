@@ -1,0 +1,21 @@
+full_name,arrest_date,arrest_location,prison_location,gender,legal_status,notes,date_of_birth,health_status
+Hassan Al-Qudsi,2023-12-01,Damascus Old City,Adra Prison,male,in_custody,Arrested at workplace,1990-05-15,Stable but needs medication
+Amira Khoury,2023-11-28,Aleppo Market,Unknown,female,missing,Last seen at checkpoint,1995-08-22,Unknown
+Samer Ibrahim,2023-12-05,Homs City Center,Homs Central Prison,male,in_custody,Detained during raid,1988-03-10,Good condition
+Leila Al-Sayyed,2023-11-15,Latakia Port,Unknown,female,unknown,Family lost contact,1992-11-30,Unknown
+Omar Al-Kurdi,2023-12-10,Daraa Suburbs,Daraa Military Prison,male,in_custody,Arrested at home,1985-07-20,Requires medical attention
+Nadia Al-Masri,2023-11-20,Idlib City,Unknown,female,deceased,Family notified of death,1983-04-12,Deceased
+Khaled Al-Ahmad,2023-12-08,Raqqa Center,Raqqa Prison,male,released,Released after interrogation,1993-09-25,Minor injuries
+Rania Al-Hamid,2023-11-25,Deir ez-Zor,Unknown,female,missing,Disappeared after arrest,1991-06-18,Unknown
+Maher Al-Saleh,2023-12-03,Hama Old Quarter,Hama Prison,male,in_custody,Arrested at checkpoint,1987-02-14,Stable condition
+Samia Al-Khalil,2023-11-18,Tartus City,Unknown,female,unknown,No information available,1994-10-08,Unknown
+Bassam Al-Najjar,2023-12-12,Damascus Suburbs,Saydnaya Prison,male,in_custody,Arrested during protest,1989-01-05,Needs urgent care
+Fatima Al-Rashid,2023-11-30,Aleppo East,Unknown,female,missing,Taken by security forces,1996-07-15,Unknown
+Ziad Al-Khatib,2023-12-07,Homs Industrial,Al-Waer Prison,male,released,Released after mediation,1986-12-22,Recovering
+Huda Al-Abed,2023-11-22,Latakia Coast,Unknown,female,deceased,Died in detention,1984-08-28,Deceased
+Walid Al-Saadi,2023-12-09,Daraa City,Daraa Prison,male,in_custody,Arrested at university,1992-04-17,Good health
+Reem Al-Othman,2023-11-27,Idlib Suburbs,Unknown,female,missing,Missing after raid,1990-03-08,Unknown
+Jamal Al-Fares,2023-12-04,Raqqa North,Raqqa Central,male,in_custody,Detained at work,1988-11-12,Stable
+Layla Al-Husseini,2023-11-23,Deir ez-Zor City,Unknown,female,unknown,Status unclear,1995-05-20,Unknown
+Mahmoud Al-Tawil,2023-12-11,Hama Center,Hama Military,male,released,Released after review,1987-09-30,Good condition
+Aisha Al-Bakri,2023-11-29,Tartus Port,Unknown,female,missing,Disappeared at checkpoint,1993-02-15,Unknown

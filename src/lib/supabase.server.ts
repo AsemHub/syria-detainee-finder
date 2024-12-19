@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
+import fetch from 'cross-fetch';
 import { LRUCache } from 'lru-cache';
 import type { SearchParams } from './supabase';
 
@@ -21,11 +22,11 @@ export const supabaseServer = createClient<Database>(
   supabaseServiceKey,
   {
     auth: {
-      persistSession: false,
       autoRefreshToken: false,
+      persistSession: false
     },
-    db: {
-      schema: 'public'
+    global: {
+      fetch: fetch
     }
   }
 );
@@ -105,7 +106,7 @@ export async function performSearch(searchText: string) {
     // Fall back to full search
     const { data: results, error } = await searchWithTimeout(
       supabaseServer.rpc('search_detainees', { 
-        search_query: normalizedText,
+        search_text: normalizedText,
         max_results: 10
       }),
       fullSearchTimeout,

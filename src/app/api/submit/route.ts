@@ -39,7 +39,7 @@ const submitSchema = z.object({
     .max(120, "Age must be less than 120")
     .optional(),
   gender: z.enum(["male", "female", "unknown"] as const),
-  status: z.enum(["detained", "released", "deceased", "unknown"] as const),
+  status: z.enum(["in_custody", "missing", "released", "deceased", "unknown"] as const),
   contact_info: z.string()
     .max(50, "Contact info must be less than 50 characters"),
   additional_notes: z.string()
