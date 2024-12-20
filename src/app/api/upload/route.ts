@@ -64,6 +64,75 @@ function recordToJson(record: CsvRecord): Json {
   return record as unknown as Json
 }
 
+// Helper function to validate date
+function isValidDate(dateStr: string): boolean {
+  // First check format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRegex.test(dateStr)) {
+    return false
+  }
+
+  // Parse the date parts
+  const [year, month, day] = dateStr.split('-').map(Number)
+  
+  // Check month range
+  if (month < 1 || month > 12) {
+    return false
+  }
+
+  // Check day range based on month
+  const daysInMonth = new Date(year, month, 0).getDate()
+  if (day < 1 || day > daysInMonth) {
+    return false
+  }
+
+  // Check if date is not in the future
+  const inputDate = new Date(dateStr)
+  const today = new Date()
+  if (inputDate > today) {
+    return false
+  }
+
+  return true
+}
+
+// Helper function to validate record
+function validateRecord(record: any): { isValid: boolean; error?: string } {
+  // Check required fields
+  if (!record.full_name?.trim()) {
+    return { isValid: false, error: 'missing_required_name' }
+  }
+  if (!record.arrest_date?.trim()) {
+    return { isValid: false, error: 'missing_required_date' }
+  }
+  if (!record.arrest_location?.trim()) {
+    return { isValid: false, error: 'missing_required_location' }
+  }
+
+  // Validate arrest date
+  if (!isValidDate(record.arrest_date)) {
+    return { isValid: false, error: 'invalid_arrest_date' }
+  }
+
+  // Validate birth date if provided
+  if (record.date_of_birth && !isValidDate(record.date_of_birth)) {
+    return { isValid: false, error: 'invalid_birth_date' }
+  }
+
+  // Validate gender if provided
+  if (record.gender && !['male', 'female'].includes(record.gender.toLowerCase())) {
+    return { isValid: false, error: 'invalid_gender' }
+  }
+
+  // Validate status if provided
+  const validStatuses = ['detained', 'released', 'deceased', 'missing', 'unknown', 'in custody']
+  if (record.legal_status && !validStatuses.includes(record.legal_status.toLowerCase())) {
+    return { isValid: false, error: 'invalid_status' }
+  }
+
+  return { isValid: true }
+}
+
 export const maxDuration = 300 // Set max duration to 5 minutes
 export const dynamic = 'force-dynamic'
 
@@ -71,10 +140,8 @@ export async function POST(request: Request) {
   try {
     console.log('Starting file upload process')
     const formData = await request.formData()
-    const file = formData.get('file') as File
     const organization = formData.get('organization') as string
-
-    console.log('Received file:', file?.name, 'organization:', organization)
+    const file = formData.get('file') as File
 
     if (!file || !organization) {
       return NextResponse.json(
@@ -83,10 +150,28 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validate file type
+    // Validate file type and size (reduced from 10MB to 5MB)
     if (!file.type || !["text/csv", "application/vnd.ms-excel"].includes(file.type)) {
       return NextResponse.json(
         { error: "Invalid file type. Only CSV files are allowed." },
+        { status: 400 }
+      )
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: "File too large. Maximum size is 5MB." },
+        { status: 400 }
+      )
+    }
+
+    // Parse and validate record count
+    const fileContent = await file.text()
+    const { data: records } = Papa.parse(fileContent, { header: true })
+    
+    if (records.length > 500) {
+      return NextResponse.json(
+        { error: "Too many records. Maximum allowed is 500 records per file. Please split your data into smaller files." },
         { status: 400 }
       )
     }
@@ -178,9 +263,9 @@ export async function POST(request: Request) {
     console.log('File URL updated:', publicUrl)
 
     // Process CSV file
-    const fileContent = await file.text()
+    const fileContent2 = await file.text()
     console.log('Processing CSV file...')
-    Papa.parse<CsvRecord>(fileContent, {
+    Papa.parse<CsvRecord>(fileContent2, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
@@ -188,12 +273,25 @@ export async function POST(request: Request) {
           console.log('CSV parsing complete')
           const records = results.data
           let processedCount = 0
-          let skippedCount = 0
+          let errorCounts = {
+            duplicates: 0,
+            missing_required_name: 0,
+            missing_required_date: 0,
+            missing_required_location: 0,
+            invalid_arrest_date: 0,
+            invalid_birth_date: 0,
+            invalid_gender: 0,
+            invalid_status: 0,
+            other: 0
+          }
 
           // Update total records count
           await supabaseServer
             .from('upload_sessions')
-            .update({ total_records: records.length })
+            .update({ 
+              total_records: records.length,
+              processing_details: errorCounts
+            })
             .eq('id', session.id)
 
           console.log('Updated total records count:', records.length)
@@ -202,20 +300,61 @@ export async function POST(request: Request) {
           for (const record of records) {
             try {
               console.log('Processing record:', record.full_name)
+              
+              // Validate record
+              const validation = validateRecord(record)
+              if (!validation.isValid) {
+                console.error(`Invalid data: ${validation.error}`)
+                switch (validation.error) {
+                  case 'missing_required_name':
+                    errorCounts.missing_required_name++
+                    break
+                  case 'missing_required_date':
+                    errorCounts.missing_required_date++
+                    break
+                  case 'missing_required_location':
+                    errorCounts.missing_required_location++
+                    break
+                  case 'invalid_arrest_date':
+                    errorCounts.invalid_arrest_date++
+                    break
+                  case 'invalid_birth_date':
+                    errorCounts.invalid_birth_date++
+                    break
+                  case 'invalid_gender':
+                    errorCounts.invalid_gender++
+                    break
+                  case 'invalid_status':
+                    errorCounts.invalid_status++
+                    break
+                  default:
+                    errorCounts.other++
+                }
+                // Update session after each validation error
+                await supabaseServer
+                  .from('upload_sessions')
+                  .update({ 
+                    processing_details: errorCounts,
+                    processed_records: processedCount
+                  })
+                  .eq('id', session.id)
+                continue
+              }
+
               // First, insert into detainees table
               const { data: detainee, error: detaineeError } = await supabaseServer
                 .from('detainees')
                 .insert({
-                  full_name: record.full_name,
+                  full_name: record.full_name.trim(),
                   date_of_detention: record.arrest_date,
-                  last_seen_location: record.arrest_location,
-                  detention_facility: record.prison_location,
-                  gender: normalizeGender(record.gender),
-                  status: normalizeStatus(record.legal_status),
-                  additional_notes: record.notes,
+                  last_seen_location: record.arrest_location.trim(),
+                  detention_facility: record.prison_location?.trim() || null,
+                  gender: record.gender ? normalizeGender(record.gender) : null,
+                  status: record.legal_status ? normalizeStatus(record.legal_status) : 'unknown',
+                  additional_notes: record.notes?.trim() || null,
                   source_organization: organization,
                   contact_info: 'Imported from CSV',
-                  physical_description: record.health_status || null,
+                  physical_description: record.health_status?.trim() || null,
                   age_at_detention: record.date_of_birth ? 
                     calculateAge(new Date(record.date_of_birth), new Date(record.arrest_date)) : 
                     null,
@@ -225,12 +364,41 @@ export async function POST(request: Request) {
                 .single()
 
               if (detaineeError) {
-                console.error('Error creating detainee:', detaineeError)
-                skippedCount++
+                if (detaineeError.code === '23505') {
+                  console.error('Duplicate record:', detaineeError)
+                  errorCounts.duplicates++
+                  // Update both processing details and skipped_duplicates
+                  await supabaseServer
+                    .from('upload_sessions')
+                    .update({ 
+                      processing_details: errorCounts,
+                      skipped_duplicates: errorCounts.duplicates,
+                      processed_records: processedCount
+                    })
+                    .eq('id', session.id)
+                } else {
+                  console.error('Error creating detainee:', detaineeError)
+                  errorCounts.other++
+                  await supabaseServer
+                    .from('upload_sessions')
+                    .update({ 
+                      processing_details: errorCounts,
+                      processed_records: processedCount
+                    })
+                    .eq('id', session.id)
+                }
                 continue
               }
 
               console.log('Detainee created:', detainee.id)
+              processedCount++
+              await supabaseServer
+                .from('upload_sessions')
+                .update({ 
+                  processing_details: errorCounts,
+                  processed_records: processedCount
+                })
+                .eq('id', session.id)
 
               // Create document for this record
               const { data: document, error: documentError } = await supabaseServer
@@ -252,7 +420,14 @@ export async function POST(request: Request) {
 
               if (documentError) {
                 console.error('Error creating document:', documentError)
-                skippedCount++
+                errorCounts.other++
+                await supabaseServer
+                  .from('upload_sessions')
+                  .update({ 
+                    processing_details: errorCounts,
+                    processed_records: processedCount
+                  })
+                  .eq('id', session.id)
                 continue
               }
 
@@ -266,24 +441,27 @@ export async function POST(request: Request) {
 
               if (linkError) {
                 console.error('Error linking document:', linkError)
-                skippedCount++
+                errorCounts.other++
+                await supabaseServer
+                  .from('upload_sessions')
+                  .update({ 
+                    processing_details: errorCounts,
+                    processed_records: processedCount
+                  })
+                  .eq('id', session.id)
               } else {
                 console.log('Document linked to detainee')
-                processedCount++
               }
-
-              // Update progress after each record
+            } catch (error) {
+              console.error('Error processing record:', error)
+              errorCounts.other++
               await supabaseServer
                 .from('upload_sessions')
                 .update({ 
-                  processed_records: processedCount,
-                  skipped_duplicates: skippedCount,
-                  status: 'processing' as UploadStatus
+                  processing_details: errorCounts,
+                  processed_records: processedCount
                 })
                 .eq('id', session.id)
-            } catch (error) {
-              console.error('Error processing record:', error)
-              skippedCount++
             }
           }
 
@@ -293,7 +471,7 @@ export async function POST(request: Request) {
             .update({
               status: 'completed' as UploadStatus,
               processed_records: processedCount,
-              skipped_duplicates: skippedCount
+              processing_details: errorCounts
             })
             .eq('id', session.id)
 
