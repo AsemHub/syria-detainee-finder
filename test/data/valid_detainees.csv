@@ -1,6 +1,0 @@
-full_name,date_of_birth,place_of_birth,gender,nationality,arrest_date,arrest_location,detaining_authority,prison_location,legal_status,health_status,notes
-"Ahmad Ali",1985-03-15,"Damascus","Male","Syrian",2012-08-20,"Aleppo","Security Forces","Sednaya Prison","Detained","Unknown","Last seen during arrest"
-"Fatima Hassan",1990-11-28,"Homs","Female","Syrian",2013-04-10,"Homs","Military Intelligence","Unknown","Missing","Unknown","Family lost contact after arrest"
-"Mohammed Ibrahim",1978-07-02,"Idlib","Male","Syrian",2011-12-15,"Damascus","Air Force Intelligence","Damascus Central Prison","Detained","Poor","Needs medical attention"
-"Leila Mahmoud",1995-02-18,"Latakia","Female","Syrian",2014-09-30,"Latakia","State Security","Adra Prison","Released","Good","Released in 2016"
-"Omar Khaled",1982-05-22,"Daraa","Male","Syrian",2013-08-05,"Daraa","Political Security","Unknown","Missing","Unknown","No information since arrest"

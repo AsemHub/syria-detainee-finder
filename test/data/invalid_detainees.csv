@@ -1,6 +1,0 @@
-name,birthdate,location,status,notes
-"Invalid Record 1","Not a date","Missing required fields","Unknown","This CSV has incorrect column names and missing required fields"
-"Invalid Record 2","2000-13-45","Invalid date format","Active","This record has an invalid date"
-"Invalid Record 3",,"Empty fields",,"Multiple empty required fields"
-"This record has way too much text that exceeds the reasonable length for a name field and should cause validation errors","2000-01-01","Location","Status","Notes"
-123456,"Not a proper name format",456789,"Invalid data types","This record uses numbers where text should be"
