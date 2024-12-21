@@ -34,10 +34,13 @@ const submitSchema = z.object({
   physical_description: z.string()
     .max(1000, "Description must be less than 1000 characters")
     .optional(),
-  age_at_detention: z.number()
-    .min(0, "Age cannot be negative")
-    .max(120, "Age must be less than 120")
-    .optional(),
+  age_at_detention: z.union([
+    z.number()
+      .min(0, "Age cannot be negative")
+      .max(120, "Age must be less than 120"),
+    z.literal(""),
+    z.null()
+  ]).optional(),
   gender: z.enum(["male", "female", "unknown"] as const),
   status: z.enum(["in_custody", "missing", "released", "deceased", "unknown"] as const),
   contact_info: z.string()

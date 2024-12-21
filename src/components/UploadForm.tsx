@@ -44,16 +44,13 @@ export function UploadForm() {
     total: 0,
     processed: 0,
     duplicates: 0,
-    invalid_dates: {
-      arrest: 0,
-      birth: 0
-    },
+    invalid_dates: 0,
     missing_required: {
       name: 0,
-      date: 0,
       location: 0
     },
     invalid_data: {
+      age: 0,
       gender: 0,
       status: 0
     }
@@ -95,20 +92,17 @@ export function UploadForm() {
         total: data.totalRecords || 0,
         processed: data.processedRecords || 0,
         duplicates: data.skippedDuplicates || 0,
-        invalid_dates: {
-          arrest: data.processingDetails?.invalid_arrest_date || 0,
-          birth: data.processingDetails?.invalid_birth_date || 0
-        },
+        invalid_dates: data.processingDetails?.invalid_detention_date || 0,
         missing_required: {
           name: data.processingDetails?.missing_required_name || 0,
-          date: data.processingDetails?.missing_required_date || 0,
           location: data.processingDetails?.missing_required_location || 0
         },
         invalid_data: {
+          age: data.processingDetails?.invalid_age || 0,
           gender: data.processingDetails?.invalid_gender || 0,
           status: data.processingDetails?.invalid_status || 0
         }
-      });
+      })
       
       if (data.status === 'completed') {
         setUploadStatus('completed')
@@ -123,7 +117,6 @@ export function UploadForm() {
         // Missing required fields
         const totalMissingRequired = 
           (data.processingDetails?.missing_required_name || 0) +
-          (data.processingDetails?.missing_required_date || 0) +
           (data.processingDetails?.missing_required_location || 0)
 
         if (totalMissingRequired > 0) {
@@ -132,8 +125,7 @@ export function UploadForm() {
 
         // Invalid dates
         const totalInvalidDates = 
-          (data.processingDetails?.invalid_arrest_date || 0) +
-          (data.processingDetails?.invalid_birth_date || 0)
+          (data.processingDetails?.invalid_detention_date || 0)
 
         if (totalInvalidDates > 0) {
           messages.push(`${totalInvalidDates} records have invalid dates.`)
@@ -141,6 +133,7 @@ export function UploadForm() {
 
         // Invalid data
         const totalInvalidData = 
+          (data.processingDetails?.invalid_age || 0) +
           (data.processingDetails?.invalid_gender || 0) +
           (data.processingDetails?.invalid_status || 0)
 
@@ -217,16 +210,13 @@ export function UploadForm() {
       total: 0,
       processed: 0,
       duplicates: 0,
-      invalid_dates: {
-        arrest: 0,
-        birth: 0
-      },
+      invalid_dates: 0,
       missing_required: {
         name: 0,
-        date: 0,
         location: 0
       },
       invalid_data: {
+        age: 0,
         gender: 0,
         status: 0
       }
@@ -372,17 +362,17 @@ export function UploadForm() {
                         
                         <div>Invalid Dates:</div>
                         <div className="font-medium text-red-600">
-                          {stats.invalid_dates.arrest + stats.invalid_dates.birth}
+                          {stats.invalid_dates}
                         </div>
                         
                         <div>Missing Required Fields:</div>
                         <div className="font-medium text-red-600">
-                          {stats.missing_required.name + stats.missing_required.date + stats.missing_required.location}
+                          {(stats.missing_required.name || 0) + (stats.missing_required.location || 0)}
                         </div>
                         
                         <div>Invalid Data Values:</div>
                         <div className="font-medium text-red-600">
-                          {stats.invalid_data.gender + stats.invalid_data.status}
+                          {(stats.invalid_data.age || 0) + (stats.invalid_data.gender || 0) + (stats.invalid_data.status || 0)}
                         </div>
                       </div>
                     </div>

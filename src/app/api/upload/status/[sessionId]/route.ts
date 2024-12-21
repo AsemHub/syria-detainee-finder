@@ -47,7 +47,8 @@ export async function GET(
       progress,
       error: session.error_message,
       createdAt: session.created_at,
-      updatedAt: session.updated_at
+      updatedAt: session.updated_at,
+      processingDetails: session.processing_details
     })
 
   } catch (error) {

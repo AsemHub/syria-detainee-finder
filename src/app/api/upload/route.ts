@@ -7,14 +7,15 @@ type UploadStatus = 'processing' | 'completed' | 'failed'
 
 interface CsvRecord {
   full_name: string
-  arrest_date: string
-  arrest_location: string
-  prison_location: string | null
+  date_of_detention: string
+  last_seen_location: string
+  detention_facility: string | null
+  physical_description: string | null
+  age_at_detention: string | null
   gender: string | null
-  legal_status: string | null
-  notes: string | null
-  date_of_birth: string | null
-  health_status: string | null
+  status: string | null
+  contact_info: string
+  additional_notes: string | null
 }
 
 type DetaineeStatus = 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown';
@@ -102,31 +103,31 @@ function validateRecord(record: any): { isValid: boolean; error?: string } {
   if (!record.full_name?.trim()) {
     return { isValid: false, error: 'missing_required_name' }
   }
-  if (!record.arrest_date?.trim()) {
-    return { isValid: false, error: 'missing_required_date' }
-  }
-  if (!record.arrest_location?.trim()) {
+  if (!record.last_seen_location?.trim()) {
     return { isValid: false, error: 'missing_required_location' }
   }
 
-  // Validate arrest date
-  if (!isValidDate(record.arrest_date)) {
-    return { isValid: false, error: 'invalid_arrest_date' }
+  // Validate detention date if provided
+  if (record.date_of_detention && !isValidDate(record.date_of_detention)) {
+    return { isValid: false, error: 'invalid_detention_date' }
   }
 
-  // Validate birth date if provided
-  if (record.date_of_birth && !isValidDate(record.date_of_birth)) {
-    return { isValid: false, error: 'invalid_birth_date' }
+  // Validate age if provided
+  if (record.age_at_detention) {
+    const age = parseInt(record.age_at_detention)
+    if (isNaN(age) || age < 0 || age > 120) {
+      return { isValid: false, error: 'invalid_age' }
+    }
   }
 
   // Validate gender if provided
-  if (record.gender && !['male', 'female'].includes(record.gender.toLowerCase())) {
+  if (record.gender && !['male', 'female', 'unknown'].includes(record.gender.toLowerCase())) {
     return { isValid: false, error: 'invalid_gender' }
   }
 
   // Validate status if provided
-  const validStatuses = ['detained', 'released', 'deceased', 'missing', 'unknown', 'in custody']
-  if (record.legal_status && !validStatuses.includes(record.legal_status.toLowerCase())) {
+  const validStatuses = ['in_custody', 'missing', 'released', 'deceased', 'unknown']
+  if (record.status && !validStatuses.includes(record.status.toLowerCase())) {
     return { isValid: false, error: 'invalid_status' }
   }
 
@@ -276,10 +277,9 @@ export async function POST(request: Request) {
           let errorCounts = {
             duplicates: 0,
             missing_required_name: 0,
-            missing_required_date: 0,
             missing_required_location: 0,
-            invalid_arrest_date: 0,
-            invalid_birth_date: 0,
+            invalid_detention_date: 0,
+            invalid_age: 0,
             invalid_gender: 0,
             invalid_status: 0,
             other: 0
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
           for (const record of records) {
             try {
               console.log('Processing record:', record.full_name)
-              
+
               // Validate record
               const validation = validateRecord(record)
               if (!validation.isValid) {
@@ -309,17 +309,14 @@ export async function POST(request: Request) {
                   case 'missing_required_name':
                     errorCounts.missing_required_name++
                     break
-                  case 'missing_required_date':
-                    errorCounts.missing_required_date++
-                    break
                   case 'missing_required_location':
                     errorCounts.missing_required_location++
                     break
-                  case 'invalid_arrest_date':
-                    errorCounts.invalid_arrest_date++
+                  case 'invalid_detention_date':
+                    errorCounts.invalid_detention_date++
                     break
-                  case 'invalid_birth_date':
-                    errorCounts.invalid_birth_date++
+                  case 'invalid_age':
+                    errorCounts.invalid_age++
                     break
                   case 'invalid_gender':
                     errorCounts.invalid_gender++
@@ -330,12 +327,13 @@ export async function POST(request: Request) {
                   default:
                     errorCounts.other++
                 }
-                // Update session after each validation error
+                // Update session with current counts
                 await supabaseServer
                   .from('upload_sessions')
                   .update({ 
                     processing_details: errorCounts,
-                    processed_records: processedCount
+                    processed_records: processedCount,
+                    skipped_duplicates: errorCounts.duplicates
                   })
                   .eq('id', session.id)
                 continue
@@ -346,18 +344,16 @@ export async function POST(request: Request) {
                 .from('detainees')
                 .insert({
                   full_name: record.full_name.trim(),
-                  date_of_detention: record.arrest_date,
-                  last_seen_location: record.arrest_location.trim(),
-                  detention_facility: record.prison_location?.trim() || null,
+                  date_of_detention: record.date_of_detention?.trim() || null,
+                  last_seen_location: record.last_seen_location.trim(),
+                  detention_facility: record.detention_facility?.trim() || null,
                   gender: record.gender ? normalizeGender(record.gender) : null,
-                  status: record.legal_status ? normalizeStatus(record.legal_status) : 'unknown',
-                  additional_notes: record.notes?.trim() || null,
+                  status: record.status ? normalizeStatus(record.status) : 'unknown',
+                  additional_notes: record.additional_notes?.trim() || null,
                   source_organization: organization,
-                  contact_info: 'Imported from CSV',
-                  physical_description: record.health_status?.trim() || null,
-                  age_at_detention: record.date_of_birth ? 
-                    calculateAge(new Date(record.date_of_birth), new Date(record.arrest_date)) : 
-                    null,
+                  contact_info: record.contact_info,
+                  physical_description: record.physical_description?.trim() || null,
+                  age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null,
                   last_update_date: new Date().toISOString()
                 })
                 .select()
@@ -367,36 +363,31 @@ export async function POST(request: Request) {
                 if (detaineeError.code === '23505') {
                   console.error('Duplicate record:', detaineeError)
                   errorCounts.duplicates++
-                  // Update both processing details and skipped_duplicates
-                  await supabaseServer
-                    .from('upload_sessions')
-                    .update({ 
-                      processing_details: errorCounts,
-                      skipped_duplicates: errorCounts.duplicates,
-                      processed_records: processedCount
-                    })
-                    .eq('id', session.id)
                 } else {
                   console.error('Error creating detainee:', detaineeError)
                   errorCounts.other++
-                  await supabaseServer
-                    .from('upload_sessions')
-                    .update({ 
-                      processing_details: errorCounts,
-                      processed_records: processedCount
-                    })
-                    .eq('id', session.id)
                 }
+                // Update session with current counts
+                await supabaseServer
+                  .from('upload_sessions')
+                  .update({ 
+                    processing_details: errorCounts,
+                    processed_records: processedCount,
+                    skipped_duplicates: errorCounts.duplicates
+                  })
+                  .eq('id', session.id)
                 continue
               }
 
               console.log('Detainee created:', detainee.id)
               processedCount++
+              // Update session with current counts
               await supabaseServer
                 .from('upload_sessions')
                 .update({ 
                   processing_details: errorCounts,
-                  processed_records: processedCount
+                  processed_records: processedCount,
+                  skipped_duplicates: errorCounts.duplicates
                 })
                 .eq('id', session.id)
 
@@ -425,7 +416,8 @@ export async function POST(request: Request) {
                   .from('upload_sessions')
                   .update({ 
                     processing_details: errorCounts,
-                    processed_records: processedCount
+                    processed_records: processedCount,
+                    skipped_duplicates: errorCounts.duplicates
                   })
                   .eq('id', session.id)
                 continue
@@ -446,7 +438,8 @@ export async function POST(request: Request) {
                   .from('upload_sessions')
                   .update({ 
                     processing_details: errorCounts,
-                    processed_records: processedCount
+                    processed_records: processedCount,
+                    skipped_duplicates: errorCounts.duplicates
                   })
                   .eq('id', session.id)
               } else {
@@ -459,7 +452,8 @@ export async function POST(request: Request) {
                 .from('upload_sessions')
                 .update({ 
                   processing_details: errorCounts,
-                  processed_records: processedCount
+                  processed_records: processedCount,
+                  skipped_duplicates: errorCounts.duplicates
                 })
                 .eq('id', session.id)
             }
