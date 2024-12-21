@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 import fetch from 'cross-fetch';
-import { LRUCache } from 'lru-cache';
 import type { SearchParams } from './supabase';
+import { normalizeArabicText, areArabicStringsSimilar } from './arabic-utils';
 
 // Validate environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 if (!supabaseUrl) {
   throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
@@ -16,14 +16,14 @@ if (!supabaseServiceKey) {
   throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
 }
 
-// Initialize Supabase client with service role key for server-side operations
+// Create a single supabase client for interacting with your database
 export const supabaseServer = createClient<Database>(
   supabaseUrl,
   supabaseServiceKey,
   {
     auth: {
+      persistSession: false,
       autoRefreshToken: false,
-      persistSession: false
     },
     global: {
       fetch: fetch
@@ -31,118 +31,147 @@ export const supabaseServer = createClient<Database>(
   }
 );
 
-// Initialize LRU cache for search results
-const searchCache = new LRUCache<string, any>({
-  max: 1000,
-  ttl: 1000 * 60 * 15, // 15 minutes
-});
-
-// Helper function to build cache key
-function buildCacheKey(params: SearchParams): string {
-  return JSON.stringify(params);
+interface SearchResult {
+  id: string;
+  fullName: string;
+  lastSeenLocation: string | null;
+  status: string;
+  gender: string | null;
+  ageAtDetention: number | null;
+  dateOfDetention: string | null;
+  detentionFacility: string | null;
+  additionalNotes: string | null;
+  physicalDescription: string | null;
+  contactInfo: string | null;
+  lastUpdateDate: string | null;
 }
 
-// Helper function to perform a search with timeout
-async function searchWithTimeout<T>(
-  searchPromise: Promise<T>,
-  timeoutMs: number,
-  operation: string
-): Promise<T> {
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(`${operation} timeout`)), timeoutMs);
-  });
-
-  return Promise.race([searchPromise, timeoutPromise]) as Promise<T>;
+interface SearchResponse {
+  data: SearchResult[];
+  metadata: {
+    totalCount: number | null;
+    hasNextPage: boolean;
+    lastCursor: {
+      id: string;
+      rank: number;
+      date: string;
+    } | null;
+  };
 }
 
-// Main search function
-export async function performSearch(searchText: string) {
-  const start = performance.now();
-  console.log('Starting search with text:', searchText);
+// Enhanced cache configuration
+const CACHE_CONFIG = {
+  maxSize: 100, // Maximum number of entries
+  ttlMs: 30000, // Time-to-live in milliseconds
+  minQueryLength: 2 // Minimum query length to cache
+};
+
+// Improved cache implementation with LRU-like behavior
+const searchCache = new Map<string, SearchResponse & { timestamp: number }>();
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  fuzzyHits: 0,
+  evictions: 0,
+  avgResponseTime: 0,
+  totalSearches: 0,
+  hitRate: () => {
+    const total = cacheStats.hits + cacheStats.misses;
+    return total > 0 ? (cacheStats.hits / total * 100).toFixed(2) + '%' : '0%';
+  },
+  averageResponseTime: () => {
+    return cacheStats.totalSearches > 0 
+      ? (cacheStats.avgResponseTime / cacheStats.totalSearches).toFixed(2) + 'ms'
+      : '0ms';
+  }
+};
+
+// Cache maintenance function
+function maintainCache() {
+  const now = Date.now();
+  let evicted = 0;
+  
+  // Remove expired entries
+  for (const [key, value] of searchCache.entries()) {
+    if (now - value.timestamp > CACHE_CONFIG.ttlMs) {
+      searchCache.delete(key);
+      evicted++;
+    }
+  }
+  
+  // If still over size limit, remove oldest entries
+  if (searchCache.size > CACHE_CONFIG.maxSize) {
+    const sortedEntries = Array.from(searchCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    
+    const entriesToRemove = sortedEntries.slice(0, searchCache.size - CACHE_CONFIG.maxSize);
+    for (const [key] of entriesToRemove) {
+      searchCache.delete(key);
+      evicted++;
+    }
+  }
+  
+  if (evicted > 0) {
+    cacheStats.evictions += evicted;
+  }
+}
+
+export async function performSearch({
+  searchText,
+  pageSize = 20,
+  cursor = null,
+  estimateTotal = true
+}: {
+  searchText: string;
+  pageSize?: number;
+  cursor?: { id: string; rank: number; date: string } | null;
+  estimateTotal?: boolean;
+}): Promise<SearchResponse> {
+  // Cache key includes all search parameters
+  const cacheKey = JSON.stringify({ searchText, pageSize, cursor, estimateTotal });
+  
+  // Check cache first
+  const cachedResult = searchCache.get(cacheKey);
+  if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_CONFIG.ttlMs) {
+    cacheStats.hits++;
+    return cachedResult;
+  }
+  cacheStats.misses++;
+
+  const startTime = Date.now();
 
   try {
-    // Check cache first
-    const cacheKey = buildCacheKey({ searchText });
-    const cachedResult = searchCache.get(cacheKey);
-    if (cachedResult) {
-      console.log('Returning cached results');
-      return cachedResult;
-    }
-
-    // Normalize search text
-    const normalizedText = searchText.trim();
-    if (!normalizedText) {
-      return [];
-    }
-
-    // Determine if text contains Arabic
-    const hasArabic = /[\u0600-\u06FF]/.test(normalizedText);
-    const isShort = normalizedText.length <= 3;
-    
-    // Adjust timeouts based on text characteristics
-    const prefixTimeout = isShort ? 1500 : 3000;
-    const fullSearchTimeout = hasArabic ? 5000 : 4000;
-
-    try {
-      // Try prefix search first for better performance
-      const { data: prefixResults, error: prefixError } = await searchWithTimeout(
-        supabaseServer.rpc('search_detainees_by_prefix', { search_prefix: normalizedText }),
-        prefixTimeout,
-        'Prefix search'
-      );
-
-      if (!prefixError && prefixResults?.length > 0) {
-        const duration = performance.now() - start;
-        console.log(`Found ${prefixResults.length} results with prefix search in ${duration.toFixed(2)}ms`);
-        searchCache.set(cacheKey, prefixResults);
-        return prefixResults;
+    const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
+      params: {
+        search_query: searchText,
+        page_size: pageSize,
+        cursor_id: cursor?.id,
+        cursor_rank: cursor?.rank,
+        cursor_date: cursor?.date,
+        estimate_total: estimateTotal
       }
-    } catch (error: any) {
-      if (error.message !== 'Prefix search timeout') {
-        console.warn('Prefix search error:', error.message);
-      }
-    }
-
-    // Fall back to full search
-    const { data: results, error } = await searchWithTimeout(
-      supabaseServer.rpc('search_detainees', { 
-        search_text: normalizedText,
-        max_results: 10
-      }),
-      fullSearchTimeout,
-      'Full search'
-    );
-
-    if (error) {
-      console.error('Search RPC error:', error);
-      throw error;
-    }
-
-    const duration = performance.now() - start;
-    console.log(`Found ${results?.length || 0} results using full search in ${duration.toFixed(2)}ms`);
-    
-    // Cache successful results
-    if (results?.length > 0) {
-      searchCache.set(cacheKey, results);
-    }
-    
-    return results || [];
-
-  } catch (error: any) {
-    const duration = performance.now() - start;
-    
-    if (error.message.includes('timeout')) {
-      console.warn(`Search timed out after ${duration.toFixed(2)}ms:`, error.message);
-      return [];
-    }
-
-    console.error(`Search failed after ${duration.toFixed(2)}ms:`, {
-      message: error.message,
-      details: error.toString(),
-      hint: error.hint || '',
-      code: error.code || ''
     });
 
-    return [];
+    if (error) throw error;
+
+    const response: SearchResponse = data;
+
+    // Cache the result
+    if (searchText.length >= CACHE_CONFIG.minQueryLength) {
+      maintainCache();
+      searchCache.set(cacheKey, { ...response, timestamp: Date.now() });
+    }
+
+    // Update performance stats
+    const responseTime = Date.now() - startTime;
+    cacheStats.totalSearches++;
+    cacheStats.avgResponseTime = 
+      (cacheStats.avgResponseTime * (cacheStats.totalSearches - 1) + responseTime) / 
+      cacheStats.totalSearches;
+
+    return response;
+  } catch (error) {
+    console.error('Search error:', error);
+    throw error;
   }
 }

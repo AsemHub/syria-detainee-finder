@@ -6,29 +6,31 @@ import { Button } from "./ui/button"
 import { Search, Loader2 } from "lucide-react"
 
 interface SearchBoxProps {
-    onSearchAction: (searchText: string) => Promise<void>
-    loading?: boolean
+    onSearchAction: (searchText: string) => Promise<void>;
+    loading?: boolean;
 }
 
 export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
-    const [query, setQuery] = useState("")
-    const [error, setError] = useState<string | null>(null)
+    const [query, setQuery] = useState("");
+    const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-        e?.preventDefault()
-        setError(null)
+        if (e) {
+            e.preventDefault();
+        }
+        setError(null);
 
         if (!query.trim()) {
-            setError("Please enter a search term")
-            return
+            setError("Please enter a search term");
+            return;
         }
 
         try {
-            await onSearchAction(query.trim())
+            await onSearchAction(query.trim());
         } catch (error) {
-            setError(error instanceof Error ? error.message : 'An unexpected error occurred')
+            setError(error instanceof Error ? error.message : 'An unexpected error occurred');
         }
-    }, [query, onSearchAction])
+    }, [query, onSearchAction]);
 
     return (
         <form onSubmit={handleSubmit} className="w-full space-y-4">
@@ -39,6 +41,7 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     className="flex-1"
+                    disabled={loading}
                 />
                 <Button type="submit" disabled={loading}>
                     {loading ? (
@@ -47,19 +50,11 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
                             Searching...
                         </>
                     ) : (
-                        <>
-                            <Search className="mr-2 h-4 w-4" />
-                            Search
-                        </>
+                        "Search"
                     )}
                 </Button>
             </div>
-
-            {error && (
-                <div className="text-red-500 text-sm">
-                    {error}
-                </div>
-            )}
+            {error && <p className="text-sm text-red-500">{error}</p>}
         </form>
-    )
+    );
 }

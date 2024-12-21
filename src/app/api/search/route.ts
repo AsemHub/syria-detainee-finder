@@ -10,15 +10,26 @@ export async function POST(request: Request) {
         console.log('Received search request');
         const start = performance.now();
         
-        const { searchText } = await request.json();
-        console.log('Search parameters:', { searchText });
+        const body = await request.json();
+        console.log('Raw request body:', body);
+        
+        const { searchText, pageSize, cursor, estimateTotal } = body;
+        console.log('Extracted parameters:', { searchText, pageSize, cursor, estimateTotal });
 
-        if (!searchText) {
-            return NextResponse.json({ error: 'Search text is required' }, { status: 400 });
+        if (!searchText || typeof searchText !== 'string') {
+            return NextResponse.json({ 
+                error: 'Search text is required and must be a string',
+                debug: { receivedValue: searchText, type: typeof searchText }
+            }, { status: 400 });
         }
 
         try {
-            const results = await performSearch(searchText);
+            const results = await performSearch({
+                searchText: searchText.trim(),
+                pageSize: pageSize || 20,
+                cursor,
+                estimateTotal: estimateTotal !== false
+            });
             const duration = performance.now() - start;
             console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);
             return NextResponse.json(results);
