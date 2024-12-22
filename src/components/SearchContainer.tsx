@@ -5,8 +5,9 @@ import { SearchBox } from './SearchBox';
 import type { Database } from '@/lib/database.types';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
-import { Calendar, MapPin, Building2, User, User2, FileText, Phone } from 'lucide-react';
+import { Calendar, MapPin, Building2, User, User2, FileText, Phone, Info } from 'lucide-react';
 import { format } from 'date-fns';
+import { ar } from 'date-fns/locale';
 import { Button } from './ui/button';
 
 type Detainee = Database['public']['Tables']['detainees']['Row']
@@ -43,244 +44,253 @@ function getStatusVariant(status: string): "default" | "secondary" | "success" |
 function getStatusDisplay(status: string): string {
     switch (status.toLowerCase()) {
         case 'in_custody':
-            return 'In Custody';
+            return 'قيد الاعتقال';
         case 'missing':
-            return 'Missing';
+            return 'مفقود';
         case 'released':
-            return 'Released';
+            return 'مطلق سراح';
+        case 'deceased':
+            return 'متوفى';
         case 'unknown':
-            return 'Unknown';
+            return 'غير معروف';
         default:
-            return status.charAt(0).toUpperCase() + status.slice(1);
+            return status;
     }
 }
 
 export function SearchContainer() {
+    const [loading, setLoading] = useState(false);
     const [searchState, setSearchState] = useState<SearchState>({
         results: [],
         totalCount: null,
         hasNextPage: false,
         lastCursor: null,
-        seenIds: new Set<string>()
+        seenIds: new Set()
     });
-    const [currentSearch, setCurrentSearch] = useState<string>("");
-    const [loading, setLoading] = useState(false);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [searchVersion, setSearchVersion] = useState(0);
+    const [currentQuery, setCurrentQuery] = useState<string>("");
 
-    const performSearch = async (searchText: string, cursor?: SearchState['lastCursor']) => {
-        const isLoadingMore = !!cursor;
-        
-        if ((isLoadingMore && loadingMore) || (!isLoadingMore && loading)) {
-            return;
-        }
-
-        const currentVersion = searchVersion;
-        
-        if (isLoadingMore) {
-            setLoadingMore(true);
-        } else {
-            setLoading(true);
-            setSearchVersion(v => v + 1);
-            setSearchState(prev => ({ 
-                ...prev, 
-                results: [],
-                seenIds: new Set<string>() 
-            }));
-        }
-        
-        setError(null);
-        
+    const handleSearch = useCallback(async (query: string) => {
+        setLoading(true);
+        setCurrentQuery(query);
         try {
             const response = await fetch('/api/search', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    searchText,
-                    cursor,
-                    estimateTotal: !isLoadingMore
-                })
+                body: JSON.stringify({ query }),
             });
 
             if (!response.ok) {
-                throw new Error(`Search failed: ${response.statusText}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'فشل البحث');
             }
 
             const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
+            
+            if (!data.results) {
+                throw new Error('لم يتم العثور على نتائج');
             }
-
-            if (currentVersion !== searchVersion && !isLoadingMore) {
-                return;
-            }
-
-            setSearchState(prev => {
-                const newSeenIds = new Set([...prev.seenIds]);
-                const filteredResults = data.data.filter((result: any) => {
-                    if (newSeenIds.has(result.id)) {
-                        return false;
-                    }
-                    newSeenIds.add(result.id);
-                    return true;
-                });
-
-                return {
-                    results: isLoadingMore ? [...prev.results, ...filteredResults] : filteredResults,
-                    totalCount: data.metadata?.totalCount ?? null,
-                    hasNextPage: data.metadata?.hasNextPage ?? false,
-                    lastCursor: data.metadata?.lastCursor ?? null,
-                    seenIds: newSeenIds
-                };
+            
+            setSearchState({
+                results: data.results,
+                totalCount: data.totalCount,
+                hasNextPage: data.hasNextPage,
+                lastCursor: data.lastCursor,
+                seenIds: new Set(data.results.map((r: Detainee) => r.id))
             });
-
         } catch (error) {
-            setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+            console.error('Search error:', error);
+            throw new Error('حدث خطأ أثناء البحث');
         } finally {
-            if (isLoadingMore) {
-                setLoadingMore(false);
-            } else {
-                setLoading(false);
-            }
+            setLoading(false);
         }
-    };
-
-    const handleSearchAction = useCallback(async (searchText: string) => {
-        setCurrentSearch(searchText);
-        await performSearch(searchText);
     }, []);
 
     const loadMore = useCallback(async () => {
-        if (searchState.hasNextPage && !loadingMore && currentSearch) {
-            await performSearch(currentSearch, searchState.lastCursor);
+        if (!searchState.lastCursor || !searchState.hasNextPage || !currentQuery) return;
+
+        setLoading(true);
+        try {
+            const response = await fetch('/api/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    query: currentQuery,
+                    cursor: searchState.lastCursor 
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'فشل تحميل المزيد من النتائج');
+            }
+
+            const data = await response.json();
+            
+            if (!data.results) {
+                throw new Error('لم يتم العثور على نتائج');
+            }
+            
+            // Filter out any results we've already seen
+            const newResults = data.results.filter((r: Detainee) => !searchState.seenIds.has(r.id));
+            
+            setSearchState(prev => ({
+                results: [...prev.results, ...newResults],
+                totalCount: data.totalCount,
+                hasNextPage: data.hasNextPage,
+                lastCursor: data.lastCursor,
+                seenIds: new Set([...prev.seenIds, ...newResults.map((r: Detainee) => r.id)])
+            }));
+        } catch (error) {
+            console.error('Load more error:', error);
+        } finally {
+            setLoading(false);
         }
-    }, [searchState.hasNextPage, loadingMore, currentSearch, searchState.lastCursor]);
+    }, [searchState.lastCursor, searchState.hasNextPage, searchState.seenIds, currentQuery]);
 
     return (
-        <div className="w-full max-w-3xl mx-auto space-y-4">
-            <SearchBox onSearchAction={handleSearchAction} loading={loading} />
+        <div className="w-full max-w-4xl mx-auto space-y-4" dir="rtl">
+            <SearchBox onSearchAction={handleSearch} loading={loading} />
 
-            {error && (
-                <div className="text-red-500 text-center p-4">
-                    {error}
-                </div>
+            {searchState.totalCount !== null && (
+                <p className="text-sm text-muted-foreground text-right">
+                    {searchState.totalCount === 0 ? (
+                        'لم يتم العثور على نتائج'
+                    ) : (
+                        `تم العثور على ${searchState.totalCount} نتيجة`
+                    )}
+                </p>
             )}
 
-            {searchState.results.length > 0 ? (
-                <div className="space-y-4">
-                    <div className="text-sm text-gray-500">
-                        {searchState.totalCount !== null ? (
-                            `Found ${searchState.totalCount} total results`
-                        ) : (
-                            `Showing ${searchState.results.length} results`
-                        )}
-                        {searchState.hasNextPage && ' (scroll for more)'}
-                    </div>
-                    
-                    <div className="space-y-2">
-                        {searchState.results.map((result, index) => (
-                            <div key={`${result.id}-${index}`} 
-                                className="p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                            >
-                                {/* Header with Name and Status */}
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h3 className="text-lg font-semibold">{result.fullName}</h3>
+            <div className="space-y-4">
+                {searchState.results.map((result) => (
+                    <Card key={result.id} className="overflow-hidden">
+                        <CardContent className="p-6">
+                            <div className="flex flex-col gap-4">
+                                {/* Header with name and status */}
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <User2 className="w-5 h-5 text-muted-foreground" />
+                                        <span className="font-bold text-lg">{result.fullName}</span>
                                     </div>
-                                    <Badge 
-                                        variant={getStatusVariant(result.status)}
-                                    >
+                                    <Badge variant={getStatusVariant(result.status)} className="mr-auto">
                                         {getStatusDisplay(result.status)}
                                     </Badge>
                                 </div>
 
-                                {/* Main Information */}
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                        <User2 className="w-4 h-4" />
-                                        <span>{result.gender || 'Unknown'}</span>
+                                {/* Main information grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {/* Personal Information */}
+                                    <div className="space-y-3">
                                         {result.ageAtDetention && (
-                                            <span>• Age: {result.ageAtDetention}</span>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <User className="w-4 h-4 text-muted-foreground" />
+                                                <span>العمر عند الاعتقال: {result.ageAtDetention} سنة</span>
+                                            </div>
+                                        )}
+                                        {result.gender && (
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <User2 className="w-4 h-4 text-muted-foreground" />
+                                                <span>الجنس: {result.gender === 'male' ? 'ذكر' : result.gender === 'female' ? 'أنثى' : 'غير محدد'}</span>
+                                            </div>
+                                        )}
+                                        {result.physicalDescription && (
+                                            <div className="flex items-start gap-2 text-sm">
+                                                <FileText className="w-4 h-4 text-muted-foreground mt-1" />
+                                                <span>الوصف الجسدي: {result.physicalDescription}</span>
+                                            </div>
                                         )}
                                     </div>
 
+                                    {/* Location Information */}
+                                    <div className="space-y-3">
+                                        {result.lastSeenLocation && (
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <MapPin className="w-4 h-4 text-muted-foreground" />
+                                                <span>آخر مكان شوهد فيه: {result.lastSeenLocation}</span>
+                                            </div>
+                                        )}
+                                        {result.detentionFacility && (
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <Building2 className="w-4 h-4 text-muted-foreground" />
+                                                <span>مركز الاحتجاز: {result.detentionFacility}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Dates and Timeline */}
+                                <div className="border-t pt-4 space-y-3">
                                     {result.dateOfDetention && (
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Calendar className="w-4 h-4" />
-                                            <span>{format(new Date(result.dateOfDetention), 'MMMM d, yyyy')}</span>
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Calendar className="w-4 h-4 text-muted-foreground" />
+                                            <span>تاريخ الاعتقال: {format(new Date(result.dateOfDetention), 'dd MMMM yyyy', { locale: ar })}</span>
                                         </div>
                                     )}
-
-                                    {result.lastSeenLocation && (
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <MapPin className="w-4 h-4" />
-                                            <span>{result.lastSeenLocation}</span>
-                                        </div>
-                                    )}
-
-                                    {result.detentionFacility && (
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <Building2 className="w-4 h-4" />
-                                            <span>{result.detentionFacility}</span>
+                                    {result.lastUpdateDate && (
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Calendar className="w-4 h-4 text-muted-foreground" />
+                                            <span>آخر تحديث: {format(new Date(result.lastUpdateDate), 'dd MMMM yyyy', { locale: ar })}</span>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Additional Information */}
-                                {(result.physicalDescription || result.additionalNotes) && (
-                                    <div className="mt-3 pt-3 border-t space-y-2">
-                                        {result.physicalDescription && (
-                                            <div className="text-sm">
-                                                <span className="font-medium">Physical Description:</span>
-                                                <p className="text-muted-foreground mt-1">{result.physicalDescription}</p>
+                                {/* Contact and Source Information */}
+                                <div className="border-t pt-4 space-y-3">
+                                    {result.contactInfo && (
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Phone className="w-4 h-4 text-muted-foreground" />
+                                            <span>معلومات الاتصال: {result.contactInfo}</span>
+                                        </div>
+                                    )}
+                                    {result.sourceOrganization && (
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Building2 className="w-4 h-4 text-muted-foreground" />
+                                            <span>المنظمة المصدر: {result.sourceOrganization}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Additional Notes */}
+                                {result.additionalNotes && (
+                                    <div className="border-t pt-4">
+                                        <div className="flex items-start gap-2 text-sm">
+                                            <Info className="w-4 h-4 text-muted-foreground mt-1" />
+                                            <div>
+                                                <span className="font-medium block mb-1">ملاحظات إضافية:</span>
+                                                <p className="text-muted-foreground whitespace-pre-wrap">{result.additionalNotes}</p>
                                             </div>
-                                        )}
-                                        {result.additionalNotes && (
-                                            <div className="text-sm">
-                                                <span className="font-medium">Additional Notes:</span>
-                                                <p className="text-muted-foreground mt-1">{result.additionalNotes}</p>
-                                            </div>
-                                        )}
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* Footer with Contact and Dates */}
-                                <div className="mt-3 pt-3 border-t flex flex-wrap justify-between items-center gap-2">
-                                    {result.contactInfo && (
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <Phone className="w-4 h-4" />
-                                            <span>{result.contactInfo}</span>
+                                {/* Record Validation */}
+                                {result.recordValidation && (
+                                    <div className="bg-accent/5 rounded-lg p-3 text-sm">
+                                        <div className="flex items-start gap-2">
+                                            <Info className="w-4 h-4 text-accent mt-0.5" />
+                                            <span className="text-accent">{result.recordValidation}</span>
                                         </div>
-                                    )}
-                                    <div className="text-xs text-muted-foreground">
-                                        {result.lastUpdateDate && (
-                                            <>Updated: {format(new Date(result.lastUpdateDate), 'MMMM d, yyyy')}</>
-                                        )}
                                     </div>
-                                </div>
+                                )}
                             </div>
-                        ))}
-                    </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
 
-                    {(searchState.hasNextPage || loadingMore) && (
-                        <div className="flex justify-center pt-4">
-                            <Button
-                                onClick={loadMore}
-                                disabled={loading || loadingMore}
-                                variant="outline"
-                            >
-                                {loadingMore ? 'Loading more...' : 'Load More'}
-                            </Button>
-                        </div>
-                    )}
-                </div>
-            ) : !loading && (
-                <div className="text-center py-8 text-gray-500">
-                    No results found
+            {searchState.hasNextPage && (
+                <div className="flex justify-center">
+                    <Button
+                        variant="default"
+                        onClick={loadMore}
+                        disabled={loading}
+                    >
+                        {loading ? 'جاري التحميل...' : 'تحميل المزيد'}
+                    </Button>
                 </div>
             )}
         </div>

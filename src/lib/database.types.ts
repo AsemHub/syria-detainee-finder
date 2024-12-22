@@ -25,12 +25,15 @@ export interface Database {
           gender: DetaineeGender
           status: DetaineeStatus
           last_update_date: string
-          contact_info: string
+          contact_info: string | null
           additional_notes: string | null
           created_at: string
           search_vector: unknown | null
           source_organization: string
           source_document_id: string | null
+          valid_leap_year_date: boolean
+          record_validation: string | null
+          record_processing_status: string | null
         }
         Insert: {
           id?: string
@@ -43,12 +46,15 @@ export interface Database {
           gender?: DetaineeGender
           status?: DetaineeStatus
           last_update_date?: string
-          contact_info: string
+          contact_info?: string | null
           additional_notes?: string | null
           created_at?: string
           search_vector?: unknown | null
           source_organization?: string
           source_document_id?: string | null
+          valid_leap_year_date?: boolean
+          record_validation?: string | null
+          record_processing_status?: string | null
         }
         Update: {
           id?: string
@@ -61,12 +67,15 @@ export interface Database {
           gender?: DetaineeGender
           status?: DetaineeStatus
           last_update_date?: string
-          contact_info?: string
+          contact_info?: string | null
           additional_notes?: string | null
           created_at?: string
           search_vector?: unknown | null
           source_organization?: string
           source_document_id?: string | null
+          valid_leap_year_date?: boolean
+          record_validation?: string | null
+          record_processing_status?: string | null
         }
       }
       documents: {

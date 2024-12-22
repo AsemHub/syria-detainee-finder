@@ -21,40 +21,47 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
         setError(null);
 
         if (!query.trim()) {
-            setError("Please enter a search term");
+            setError("الرجاء إدخال نص للبحث");
             return;
         }
 
         try {
             await onSearchAction(query.trim());
         } catch (error) {
-            setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+            setError(error instanceof Error ? error.message : 'حدث خطأ غير متوقع');
         }
     }, [query, onSearchAction]);
 
     return (
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <form onSubmit={handleSubmit} className="w-full space-y-4" dir="rtl">
             <div className="flex gap-2">
                 <Input
                     type="text"
-                    placeholder="Search by name or location..."
+                    placeholder="ابحث بالاسم أو الموقع..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="flex-1"
+                    className="flex-1 text-right"
                     disabled={loading}
                 />
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" disabled={loading} variant="default">
                     {loading ? (
                         <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Searching...
+                            <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                            جاري البحث...
                         </>
                     ) : (
-                        "Search"
+                        <>
+                            <Search className="ml-2 h-4 w-4" />
+                            بحث
+                        </>
                     )}
                 </Button>
             </div>
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+                <div className="text-red-500 text-sm text-right">
+                    {error}
+                </div>
+            )}
         </form>
     );
 }

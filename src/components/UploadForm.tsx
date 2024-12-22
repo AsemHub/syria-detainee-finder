@@ -261,9 +261,9 @@ export function UploadForm() {
         </div>
       )}
 
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
-        <p className="font-medium">Upload Limits:</p>
-        <ul className="list-disc ml-5 mt-2">
+      <div className="bg-accent/10 border-l-4 border-accent p-4 mb-4 rounded-sm">
+        <p className="font-medium text-foreground">Upload Limits:</p>
+        <ul className="list-disc ml-5 mt-2 text-muted-foreground">
           <li>Maximum file size: 5MB</li>
           <li>Maximum records per file: 500</li>
           <li>For larger datasets, please split your data into multiple files</li>
