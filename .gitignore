@@ -10,7 +10,6 @@ node_modules
 /test-results/
 /playwright-report/
 /playwright/.cache/
-*.csv
 test.env.js
 
 # Next.js
@@ -43,7 +42,6 @@ next-env.d.ts
 
 # Documentation
 /docs
-*.md
 !README.md
 !search-functions.md
 !table-structu-e-and-current-search-configuration.md

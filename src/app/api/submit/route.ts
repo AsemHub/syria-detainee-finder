@@ -36,10 +36,11 @@ const submitSchema = z.object({
     .optional(),
   age_at_detention: z.union([
     z.number()
-      .min(0, "Age cannot be negative")
-      .max(120, "Age must be less than 120"),
-    z.literal(""),
-    z.null()
+      .min(0, "Age must be between 0 and 120")
+      .max(120, "Age must be between 0 and 120"),
+    z.string()
+      .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "Age must be between 0 and 120")
+      .transform(val => val ? Number(val) : null)
   ]).optional(),
   gender: z.enum(["male", "female", "unknown"] as const),
   status: z.enum(["in_custody", "missing", "released", "deceased", "unknown"] as const),
@@ -93,10 +94,13 @@ export async function POST(request: Request) {
       
       try {
         console.log('Attempting database insert...');
+        
+        // Insert the data
         const { data, error: insertError } = await supabaseServer
           .from('detainees')
           .insert({
             ...validatedData,
+            last_update_date: new Date().toISOString()
           } satisfies Database['public']['Tables']['detainees']['Insert'])
           .select()
           .single();

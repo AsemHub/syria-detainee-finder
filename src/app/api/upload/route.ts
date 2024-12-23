@@ -1,197 +1,432 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabase.server"
+import { createClient } from "@supabase/supabase-js"
 import Papa from "papaparse"
-import { Database, Json } from "@/lib/database.types"
-
-type UploadStatus = 'processing' | 'completed' | 'failed'
-
-interface CsvRecord {
-  full_name: string
-  date_of_detention: string
-  last_seen_location: string
-  detention_facility: string | null
-  physical_description: string | null
-  age_at_detention: string | null
-  gender: string | null
-  status: string | null
-  contact_info: string
-  additional_notes: string | null
-}
-
-type DetaineeStatus = 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown';
-type Gender = 'male' | 'female' | 'unknown';
-
-// Helper function to calculate age
-function calculateAge(birthDate: Date, detentionDate: Date): number {
-  const years = detentionDate.getFullYear() - birthDate.getFullYear()
-  const months = detentionDate.getMonth() - birthDate.getMonth()
-  if (months < 0 || (months === 0 && detentionDate.getDate() < birthDate.getDate())) {
-    return years - 1
-  }
-  return years
-}
-
-// Helper function to normalize status
-function normalizeStatus(status: string | null): DetaineeStatus {
-  if (!status) return 'unknown';
-  
-  const normalized = status.toLowerCase().trim();
-  
-  // Map common variations to standard values
-  const statusMap: Record<string, DetaineeStatus> = {
-    'detained': 'in_custody',
-    'in custody': 'in_custody',
-    'missing': 'missing',
-    'released': 'released',
-    'deceased': 'deceased',
-    'unknown': 'unknown'
-  };
-  
-  return statusMap[normalized] || 'unknown';
-}
-
-// Helper function to normalize gender
-function normalizeGender(gender: string | null): Gender {
-  if (!gender) return 'unknown';
-  
-  const normalized = gender.toLowerCase().trim();
-  return normalized === 'male' ? 'male' :
-         normalized === 'female' ? 'female' :
-         'unknown';
-}
-
-// Helper function to convert record to Json type
-function recordToJson(record: CsvRecord): Json {
-  return record as unknown as Json
-}
+import { Database, DetaineeGender, DetaineeStatus } from "@/lib/database.types"
+import fetch from 'cross-fetch'
 
 // Helper function to validate date
-function isValidDate(dateStr: string): boolean {
-  // First check format
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-  if (!dateRegex.test(dateStr)) {
-    return false
-  }
+function isValidDate(dateString: string): boolean {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  return date instanceof Date && !isNaN(date.getTime());
+}
 
-  // Parse the date parts
-  const [year, month, day] = dateStr.split('-').map(Number)
+// Helper function to normalize text for comparison
+function normalizeText(text: string | null | undefined, isArabic: boolean = false): string {
+  if (!text) return '';
+  // Remove extra spaces and normalize
+  const normalized = text.trim().normalize('NFKC');
+  // Only apply toLowerCase for non-Arabic text
+  return isArabic ? normalized : normalized.toLowerCase();
+}
+
+// Helper function to check if text is Arabic
+function isArabicText(text: string): boolean {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
+// Helper function to validate status
+function validateStatus(status: string | null | undefined): DetaineeStatus | null {
+  if (!status) return null;
   
-  // Check month range
-  if (month < 1 || month > 12) {
-    return false
+  const isArabic = isArabicText(status);
+  const normalizedStatus = normalizeText(status, isArabic);
+  
+  // First try direct match
+  if (normalizedStatus in STATUS_MAP) {
+    return STATUS_MAP[normalizedStatus];
   }
-
-  // Check day range based on month
-  const daysInMonth = new Date(year, month, 0).getDate()
-  if (day < 1 || day > daysInMonth) {
-    return false
+  
+  // For English status, also try with underscores replaced by spaces
+  if (!isArabic) {
+    const alternateStatus = normalizedStatus.replace(/_/g, ' ');
+    if (alternateStatus in STATUS_MAP) {
+      return STATUS_MAP[alternateStatus];
+    }
   }
+  
+  return null;
+}
 
-  // Check if date is not in the future
-  const inputDate = new Date(dateStr)
-  const today = new Date()
-  if (inputDate > today) {
-    return false
+// Gender mapping between Arabic and English
+const GENDER_MAP: Record<string, DetaineeGender> = {
+  'ذكر': 'male',
+  'أنثى': 'female',
+  'male': 'male',
+  'female': 'female',
+  'm': 'male',
+  'f': 'female'
+};
+
+// Helper function to validate gender
+function validateGender(gender: string | null | undefined): DetaineeGender | null {
+  if (!gender) return null;
+  
+  const isArabic = isArabicText(gender);
+  const normalizedGender = normalizeText(gender, isArabic);
+  
+  // Try direct match
+  if (normalizedGender in GENDER_MAP) {
+    return GENDER_MAP[normalizedGender];
   }
+  
+  // For English gender, also try with underscores replaced by spaces
+  if (!isArabic) {
+    const alternateGender = normalizedGender.replace(/_/g, ' ');
+    if (alternateGender in GENDER_MAP) {
+      return GENDER_MAP[alternateGender];
+    }
+  }
+  
+  return null;
+}
 
-  return true
+// Status mapping between Arabic and English
+const STATUS_MAP: Record<string, DetaineeStatus> = {
+  // In custody variations
+  'معتقل': 'in_custody',
+  'قيد الاعتقال': 'in_custody',
+  'في المعتقل': 'in_custody',
+  
+  // Missing variations
+  'مفقود': 'missing',
+  'غير معروف المصير': 'missing',
+  
+  // Released variations
+  'محرر': 'released',
+  'مفرج عنه': 'released',
+  'تم الافراج': 'released',
+  'مطلق سراح': 'released',
+  
+  // Deceased variations
+  'متوفى': 'deceased',
+  'متوفي': 'deceased',
+  'توفي': 'deceased',
+  'ميت': 'deceased',
+  
+  // Unknown variations
+  'غير معروف': 'unknown',
+  
+  // English values (these will be converted to lowercase during comparison)
+  'in_custody': 'in_custody',
+  'missing': 'missing',
+  'released': 'released',
+  'deceased': 'deceased',
+  'unknown': 'unknown'
+};
+
+// Column definitions for CSV upload
+// Required columns must be present in the CSV file
+// Optional columns can be omitted
+const COLUMN_DEFINITIONS = {
+  // Required columns
+  required: {
+    'full_name': {
+      alternatives: ['full_name', 'الاسم الكامل', 'الاسم'],
+      description: 'الاسم الكامل للمعتقل'
+    },
+    'last_seen_location': {
+      alternatives: ['last_seen_location', 'مكان آخر مشاهدة', 'المكان', 'آخر مكان'],
+      description: 'آخر مكان شوهد فيه'
+    },
+    'contact_info': {
+      alternatives: ['contact_info', 'معلومات الاتصال', 'الاتصال'],
+      description: 'معلومات الاتصال'
+    }
+  },
+  // Optional columns
+  optional: {
+    'date_of_detention': {
+      alternatives: ['date_of_detention', 'تاريخ الاعتقال', 'التاريخ'],
+      description: 'تاريخ الاعتقال (YYYY-MM-DD)'
+    },
+    'detention_facility': {
+      alternatives: ['detention_facility', 'مكان الاحتجاز', 'السجن', 'المعتقل'],
+      description: 'مكان الاحتجاز'
+    },
+    'physical_description': {
+      alternatives: ['physical_description', 'الوصف الجسدي', 'الوصف'],
+      description: 'الوصف الجسدي'
+    },
+    'age_at_detention': {
+      alternatives: ['age_at_detention', 'العمر عند الاعتقال', 'العمر'],
+      description: 'العمر عند الاعتقال (رقم)'
+    },
+    'gender': {
+      alternatives: ['gender', 'الجنس'],
+      description: 'الجنس (ذكر/أنثى/غير محدد)'
+    },
+    'status': {
+      alternatives: ['status', 'الحالة', 'الوضع'],
+      description: 'الحالة (معتقل/مفقود/محرر/متوفى/غير معروف)'
+    },
+    'additional_notes': {
+      alternatives: ['additional_notes', 'ملاحظات إضافية', 'ملاحظات'],
+      description: 'ملاحظات إضافية'
+    },
+    'organization': {
+      alternatives: ['organization', 'المنظمة', 'الجهة'],
+      description: 'المنظمة المقدمة للمعلومات'
+    }
+  }
+};
+
+// Helper function to validate column names
+function validateColumns(headers: string[]): { 
+  isValid: boolean; 
+  missingColumns: Array<{
+    name: string;
+    description: string;
+    alternatives: string[];
+  }>;
+} {
+  const missingColumns: Array<{
+    name: string;
+    description: string;
+    alternatives: string[];
+  }> = [];
+  
+  // Check each required column
+  for (const [colName, colDef] of Object.entries(COLUMN_DEFINITIONS.required)) {
+    const hasColumn = colDef.alternatives.some(alt => headers.includes(alt));
+    if (!hasColumn) {
+      missingColumns.push({
+        name: colName,
+        description: colDef.description,
+        alternatives: colDef.alternatives
+      });
+    }
+  }
+  
+  return {
+    isValid: missingColumns.length === 0,
+    missingColumns
+  };
 }
 
 // Helper function to validate record
-function validateRecord(record: any): { isValid: boolean; error?: string } {
-  // Check required fields
+function validateRecord(record: any): { 
+  isValid: boolean; 
+  error?: string; 
+  errorType?: string;
+  errorField?: string;
+  details?: string;
+} {
+  const errors: string[] = [];
+  
+  // Required fields
   if (!record.full_name?.trim()) {
-    return { isValid: false, error: 'missing_required_name' }
+    errors.push('Full name is required');
   }
   if (!record.last_seen_location?.trim()) {
-    return { isValid: false, error: 'missing_required_location' }
+    errors.push('Last seen location is required');
+  }
+  if (!record.contact_info?.trim()) {
+    errors.push('Contact information is required');
   }
 
-  // Validate detention date if provided
-  if (record.date_of_detention && !isValidDate(record.date_of_detention)) {
-    return { isValid: false, error: 'invalid_detention_date' }
-  }
-
-  // Validate age if provided
-  if (record.age_at_detention) {
-    const age = parseInt(record.age_at_detention)
-    if (isNaN(age) || age < 0 || age > 120) {
-      return { isValid: false, error: 'invalid_age' }
+  // Optional fields validation
+  if (record.date_of_detention) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(record.date_of_detention)) {
+      errors.push('Date must be in YYYY-MM-DD format');
+    } else {
+      const date = new Date(record.date_of_detention);
+      if (isNaN(date.getTime())) {
+        errors.push('Invalid date');
+      }
     }
   }
 
-  // Validate gender if provided
-  if (record.gender && !['male', 'female', 'unknown'].includes(record.gender.toLowerCase())) {
-    return { isValid: false, error: 'invalid_gender' }
+  if (record.age_at_detention) {
+    const age = parseInt(record.age_at_detention);
+    if (isNaN(age) || age < 0 || age > 150 || !Number.isInteger(age)) {
+      errors.push('Age must be a whole number between 0 and 150');
+    }
   }
 
-  // Validate status if provided
-  const validStatuses = ['in_custody', 'missing', 'released', 'deceased', 'unknown']
-  if (record.status && !validStatuses.includes(record.status.toLowerCase())) {
-    return { isValid: false, error: 'invalid_status' }
+  if (record.gender) {
+    const normalizedGender = record.gender.toLowerCase().trim();
+    if (!['male', 'female', 'ذكر', 'أنثى'].includes(normalizedGender)) {
+      errors.push('Invalid gender value. Must be one of: male/ذكر or female/أنثى');
+    }
   }
 
-  return { isValid: true }
+  if (record.status) {
+    const normalizedStatus = record.status.toLowerCase().trim();
+    if (!['in_custody', 'missing', 'released', 'deceased', 'unknown',
+          'معتقل', 'مفقود', 'محرر', 'متوفى', 'غير معروف'].includes(normalizedStatus)) {
+      errors.push('Invalid status value. Must be one of: in_custody/معتقل, missing/مفقود, released/محرر, deceased/متوفى, unknown/غير معروف');
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    error: errors.join(', '),
+    details: errors.length > 0 ? errors : undefined
+  };
 }
 
-export const maxDuration = 300 // Set max duration to 5 minutes
-export const dynamic = 'force-dynamic'
+// Helper function to normalize gender
+function normalizeGender(gender: string): 'male' | 'female' | 'other' | 'unknown' {
+  const genderMap: { [key: string]: 'male' | 'female' | 'other' | 'unknown' } = {
+    'ذكر': 'male',
+    'أنثى': 'female',
+    'غير محدد': 'unknown'
+  };
+  return genderMap[gender] || 'unknown';
+}
+
+// Helper function to normalize status
+function normalizeStatus(status: string): 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown' {
+  const statusMap: { [key: string]: 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown' } = {
+    'معتقل': 'in_custody',
+    'مفقود': 'missing',
+    'محرر': 'released',
+    'متوفى': 'deceased',
+    'غير معروف': 'unknown'
+  };
+  return statusMap[status] || 'unknown';
+}
+
+// Helper function to normalize date
+function normalizeDate(dateStr: string): string | null {
+  if (!dateStr) return null;
+  
+  // Try parsing DD-MM-YYYY format
+  const ddmmyyyy = dateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (ddmmyyyy) {
+    const [_, day, month, year] = ddmmyyyy;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  
+  // Already in YYYY-MM-DD format
+  const yyyymmdd = dateStr.match(/^\d{4}-\d{2}-\d{2}$/);
+  if (yyyymmdd) {
+    return dateStr;
+  }
+  
+  return null;
+}
+
+// Helper function to update upload status
+async function updateUploadStatus(
+  supabase: ReturnType<typeof createClient>,
+  sessionId: string,
+  status: {
+    status: 'processing' | 'completed' | 'failed';
+    totalRecords: number;
+    processedRecords: number;
+    validRecords: number;
+    invalidRecords: number;
+    duplicateRecords: number;
+    errors: Array<{ record: string; error: string; details?: string }>;
+    currentRecord?: string;
+    processingDetails?: {
+      invalid_dates: number;
+      missing_required: {
+        full_name: number;
+        last_seen_location: number;
+        contact_info: number;
+      };
+      invalid_data: {
+        age: number;
+        gender: number;
+        status: number;
+      };
+    };
+  }
+) {
+  try {
+    const { error } = await supabase
+      .from('upload_sessions')
+      .update({
+        status: status.status,
+        total_records: status.totalRecords,
+        processed_records: status.processedRecords,
+        valid_records: status.validRecords,
+        invalid_records: status.invalidRecords,
+        duplicate_records: status.duplicateRecords,
+        errors: status.errors,
+        current_record: status.currentRecord,
+        processing_details: status.processingDetails,
+        last_update: new Date().toISOString()
+      })
+      .eq('id', sessionId)
+
+    if (error) {
+      console.error('Error updating upload status:', error)
+    }
+  } catch (error) {
+    console.error('Error in updateUploadStatus:', error)
+  }
+}
+
+// Helper function to check for duplicates within the same file
+function isDuplicateInFile(record: any, processedRecords: any[]): boolean {
+  return processedRecords.some(
+    (existingRecord) =>
+      existingRecord.full_name === record.full_name &&
+      existingRecord.date_of_detention === record.date_of_detention
+  );
+}
 
 export async function POST(request: Request) {
   try {
-    console.log('Starting file upload process')
     const formData = await request.formData()
-    const organization = formData.get('organization') as string
     const file = formData.get('file') as File
+    const organization = formData.get('organization') as string
 
     if (!file || !organization) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: 'File and organization are required' },
         { status: 400 }
       )
     }
 
-    // Validate file type and size (reduced from 10MB to 5MB)
-    if (!file.type || !["text/csv", "application/vnd.ms-excel"].includes(file.type)) {
-      return NextResponse.json(
-        { error: "Invalid file type. Only CSV files are allowed." },
-        { status: 400 }
-      )
-    }
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          fetch: fetch,
+          headers: { 'x-my-custom-header': 'my-app-name' }
+        }
+      }
+    )
 
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: "File too large. Maximum size is 5MB." },
-        { status: 400 }
-      )
-    }
-
-    // Parse and validate record count
-    const fileContent = await file.text()
-    const { data: records } = Papa.parse(fileContent, { header: true })
-    
-    if (records.length > 500) {
-      return NextResponse.json(
-        { error: "Too many records. Maximum allowed is 500 records per file. Please split your data into smaller files." },
-        { status: 400 }
-      )
-    }
-
-    console.log('Creating upload session...')
-    // Create upload session
-    const { data: session, error: sessionError } = await supabaseServer
+    // Create upload session first
+    const { data: session, error: sessionError } = await supabase
       .from('upload_sessions')
       .insert({
         file_name: file.name,
-        file_url: '',  // Will be updated after storage upload
-        file_size: file.size,
-        mime_type: file.type,
-        uploaded_by: 'system',
-        status: 'processing' as UploadStatus,
+        organization,
+        status: 'processing',
         total_records: 0,
         processed_records: 0,
-        skipped_duplicates: 0,
-        processing_details: {}
+        valid_records: 0,
+        invalid_records: 0,
+        duplicate_records: 0,
+        errors: [],
+        created_at: new Date().toISOString(),
+        last_update: new Date().toISOString(),
+        processing_details: {
+          invalid_dates: 0,
+          missing_required: {
+            full_name: 0,
+            last_seen_location: 0,
+            contact_info: 0
+          },
+          invalid_data: {
+            age: 0,
+            gender: 0,
+            status: 0
+          }
+        }
       })
       .select()
       .single()
@@ -199,309 +434,241 @@ export async function POST(request: Request) {
     if (sessionError) {
       console.error('Error creating upload session:', sessionError)
       return NextResponse.json(
-        { error: "Failed to create upload session", details: sessionError },
+        { error: 'Failed to create upload session' },
         { status: 500 }
       )
     }
 
-    if (!session) {
-      return NextResponse.json(
-        { error: "No session data returned" },
-        { status: 500 }
-      )
-    }
+    const sessionId = session.id
 
-    console.log('Upload session created:', session.id)
+    try {
+      // Upload file to Supabase Storage
+      const timestamp = new Date().getTime()
+      const fileName = `${timestamp}_${file.name}`
+      
+      // Read file content and create buffer
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      
+      const { data: uploadData, error: uploadError } = await supabase
+        .storage
+        .from('csv-uploads')
+        .upload(fileName, buffer, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: 'text/csv'
+        })
 
-    // Upload file to storage
-    const fileBuffer = await file.arrayBuffer()
-    console.log('Uploading file to storage...')
-    const { data: storageData, error: storageError } = await supabaseServer
-      .storage
-      .from('csv-uploads')
-      .upload(
-        `${session.id}/${file.name}`,
-        fileBuffer,
-        {
-          contentType: file.type,
-          duplex: 'half',
-          upsert: false
-        }
-      )
+      if (uploadError) {
+        throw uploadError
+      }
 
-    if (storageError) {
-      console.error('Error uploading file to storage:', storageError)
-      await supabaseServer
+      // Get the public URL for the uploaded file
+      const { data: { publicUrl } } = supabase
+        .storage
+        .from('csv-uploads')
+        .getPublicUrl(fileName)
+
+      // Update session with file URL
+      await supabase
         .from('upload_sessions')
         .update({
-          status: 'failed' as UploadStatus,
-          error_message: 'Failed to upload file to storage'
+          file_url: publicUrl,
+          file_size: buffer.length,
+          mime_type: 'text/csv'
         })
-        .eq('id', session.id)
+        .eq('id', sessionId)
 
-      return NextResponse.json(
-        { error: "Failed to upload file", details: storageError },
-        { status: 500 }
-      )
+    } catch (uploadError) {
+      console.error('Error uploading file:', uploadError)
+      // Continue processing even if file upload fails
     }
 
-    console.log('File uploaded to storage:', storageData)
+    // Process file in background
+    const text = await file.text()
+    const { data, meta: { fields } } = Papa.parse(text, { header: true })
 
-    // Get file URL and update session
-    const { data: { publicUrl } } = supabaseServer
-      .storage
-      .from('csv-uploads')
-      .getPublicUrl(`${session.id}/${file.name}`)
-
-    await supabaseServer
-      .from('upload_sessions')
-      .update({
-        file_url: publicUrl,
-        status: 'processing' as UploadStatus
+    // Validate columns first
+    const columnValidation = validateColumns(fields || [])
+    if (!columnValidation.isValid) {
+      await updateUploadStatus(supabase, sessionId, {
+        status: 'failed',
+        totalRecords: 0,
+        processedRecords: 0,
+        validRecords: 0,
+        invalidRecords: 0,
+        duplicateRecords: 0,
+        errors: columnValidation.missingColumns.map(col => ({
+          record: 'Column Validation',
+          error: `Missing required column: ${col.name}`,
+          details: `Description: ${col.description}. Alternatives: ${col.alternatives.join(', ')}`
+        }))
       })
-      .eq('id', session.id)
+      return NextResponse.json({ error: 'Invalid columns', details: columnValidation.missingColumns }, { status: 400 })
+    }
 
-    console.log('File URL updated:', publicUrl)
-
-    // Process CSV file
-    const fileContent2 = await file.text()
-    console.log('Processing CSV file...')
-    Papa.parse<CsvRecord>(fileContent2, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          console.log('CSV parsing complete')
-          const records = results.data
-          let processedCount = 0
-          let errorCounts = {
-            duplicates: 0,
-            missing_required_name: 0,
-            missing_required_location: 0,
-            invalid_detention_date: 0,
-            invalid_age: 0,
-            invalid_gender: 0,
-            invalid_status: 0,
-            other: 0
-          }
-
-          // Update total records count
-          await supabaseServer
-            .from('upload_sessions')
-            .update({ 
-              total_records: records.length,
-              processing_details: errorCounts
-            })
-            .eq('id', session.id)
-
-          console.log('Updated total records count:', records.length)
-
-          // Process each record
-          for (const record of records) {
-            try {
-              console.log('Processing record:', record.full_name)
-
-              // Validate record
-              const validation = validateRecord(record)
-              if (!validation.isValid) {
-                console.error(`Invalid data: ${validation.error}`)
-                switch (validation.error) {
-                  case 'missing_required_name':
-                    errorCounts.missing_required_name++
-                    break
-                  case 'missing_required_location':
-                    errorCounts.missing_required_location++
-                    break
-                  case 'invalid_detention_date':
-                    errorCounts.invalid_detention_date++
-                    break
-                  case 'invalid_age':
-                    errorCounts.invalid_age++
-                    break
-                  case 'invalid_gender':
-                    errorCounts.invalid_gender++
-                    break
-                  case 'invalid_status':
-                    errorCounts.invalid_status++
-                    break
-                  default:
-                    errorCounts.other++
-                }
-                // Update session with current counts
-                await supabaseServer
-                  .from('upload_sessions')
-                  .update({ 
-                    processing_details: errorCounts,
-                    processed_records: processedCount,
-                    skipped_duplicates: errorCounts.duplicates
-                  })
-                  .eq('id', session.id)
-                continue
-              }
-
-              // First, insert into detainees table
-              const { data: detainee, error: detaineeError } = await supabaseServer
-                .from('detainees')
-                .insert({
-                  full_name: record.full_name.trim(),
-                  date_of_detention: record.date_of_detention?.trim() || null,
-                  last_seen_location: record.last_seen_location.trim(),
-                  detention_facility: record.detention_facility?.trim() || null,
-                  gender: record.gender ? normalizeGender(record.gender) : null,
-                  status: record.status ? normalizeStatus(record.status) : 'unknown',
-                  additional_notes: record.additional_notes?.trim() || null,
-                  source_organization: organization,
-                  contact_info: record.contact_info,
-                  physical_description: record.physical_description?.trim() || null,
-                  age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null,
-                  last_update_date: new Date().toISOString()
-                })
-                .select()
-                .single()
-
-              if (detaineeError) {
-                if (detaineeError.code === '23505') {
-                  console.error('Duplicate record:', detaineeError)
-                  errorCounts.duplicates++
-                } else {
-                  console.error('Error creating detainee:', detaineeError)
-                  errorCounts.other++
-                }
-                // Update session with current counts
-                await supabaseServer
-                  .from('upload_sessions')
-                  .update({ 
-                    processing_details: errorCounts,
-                    processed_records: processedCount,
-                    skipped_duplicates: errorCounts.duplicates
-                  })
-                  .eq('id', session.id)
-                continue
-              }
-
-              console.log('Detainee created:', detainee.id)
-              processedCount++
-              // Update session with current counts
-              await supabaseServer
-                .from('upload_sessions')
-                .update({ 
-                  processing_details: errorCounts,
-                  processed_records: processedCount,
-                  skipped_duplicates: errorCounts.duplicates
-                })
-                .eq('id', session.id)
-
-              // Create document for this record
-              const { data: document, error: documentError } = await supabaseServer
-                .from('documents')
-                .insert({
-                  file_name: file.name,
-                  file_path: `${session.id}/${file.name}`,
-                  uploaded_by: 'system',
-                  upload_session_id: session.id,
-                  is_csv_upload: true,
-                  status: 'processing',
-                  total_records: 1,
-                  processed_records: 0,
-                  skipped_duplicates: 0,
-                  processing_details: recordToJson(record)
-                })
-                .select()
-                .single()
-
-              if (documentError) {
-                console.error('Error creating document:', documentError)
-                errorCounts.other++
-                await supabaseServer
-                  .from('upload_sessions')
-                  .update({ 
-                    processing_details: errorCounts,
-                    processed_records: processedCount,
-                    skipped_duplicates: errorCounts.duplicates
-                  })
-                  .eq('id', session.id)
-                continue
-              }
-
-              console.log('Document created:', document.id)
-
-              // Link document to detainee
-              const { error: linkError } = await supabaseServer
-                .from('detainees')
-                .update({ source_document_id: document.id })
-                .eq('id', detainee.id)
-
-              if (linkError) {
-                console.error('Error linking document:', linkError)
-                errorCounts.other++
-                await supabaseServer
-                  .from('upload_sessions')
-                  .update({ 
-                    processing_details: errorCounts,
-                    processed_records: processedCount,
-                    skipped_duplicates: errorCounts.duplicates
-                  })
-                  .eq('id', session.id)
-              } else {
-                console.log('Document linked to detainee')
-              }
-            } catch (error) {
-              console.error('Error processing record:', error)
-              errorCounts.other++
-              await supabaseServer
-                .from('upload_sessions')
-                .update({ 
-                  processing_details: errorCounts,
-                  processed_records: processedCount,
-                  skipped_duplicates: errorCounts.duplicates
-                })
-                .eq('id', session.id)
-            }
-          }
-
-          // Update final status
-          await supabaseServer
-            .from('upload_sessions')
-            .update({
-              status: 'completed' as UploadStatus,
-              processed_records: processedCount,
-              processing_details: errorCounts
-            })
-            .eq('id', session.id)
-
-        } catch (error) {
-          console.error('Error processing CSV:', error)
-          await supabaseServer
-            .from('upload_sessions')
-            .update({
-              status: 'failed' as UploadStatus,
-              error_message: 'Failed to process CSV file'
-            })
-            .eq('id', session.id)
-        }
+    // Initialize processing
+    const totalRecords = data.length
+    const processingDetails = {
+      invalid_dates: 0,
+      missing_required: {
+        full_name: 0,
+        last_seen_location: 0,
+        contact_info: 0
       },
-      error: async (error: Error) => {
-        console.error('Error parsing CSV:', error)
-        await supabaseServer
-          .from('upload_sessions')
-          .update({
-            status: 'failed' as UploadStatus,
-            error_message: 'Failed to parse CSV file'
-          })
-          .eq('id', session.id)
+      invalid_data: {
+        age: 0,
+        gender: 0,
+        status: 0
       }
-    })
+    }
 
-    console.log('Upload process complete')
-    return NextResponse.json({ 
-      message: "Upload started",
-      sessionId: session.id
-    })
+    // Start processing in background
+    ;(async () => {
+      try {
+        let processedRecords = 0
+        let validRecords = 0
+        let invalidRecords = 0
+        let duplicateRecords = 0
+        const errors: Array<{ record: string; error: string; details?: string }> = []
+        const processedSet = new Set()
 
+        for (const record of data) {
+          // Update current record being processed
+          await updateUploadStatus(supabase, sessionId, {
+            status: 'processing',
+            totalRecords,
+            processedRecords,
+            validRecords,
+            invalidRecords,
+            duplicateRecords,
+            errors,
+            currentRecord: record.full_name,
+            processingDetails
+          })
+
+          // Validate record
+          const validation = validateRecord(record)
+          if (!validation.isValid) {
+            invalidRecords++
+            errors.push({
+              record: record.full_name || 'Unknown',
+              error: validation.error || 'Invalid record',
+              details: validation.details
+            })
+
+            // Update specific error counters
+            if (validation.errorType === 'missing_required') {
+              processingDetails.missing_required[validation.errorField as keyof typeof processingDetails.missing_required]++
+            } else if (validation.errorType === 'invalid_data') {
+              processingDetails.invalid_data[validation.errorField as keyof typeof processingDetails.invalid_data]++
+            } else if (validation.errorType === 'invalid_date') {
+              processingDetails.invalid_dates++
+            }
+
+            processedRecords++
+            continue
+          }
+
+          // Check for duplicates within the file
+          if (isDuplicateInFile(record, Array.from(processedSet))) {
+            duplicateRecords++
+            errors.push({
+              record: record.full_name,
+              error: 'Duplicate record',
+              details: 'This record appears multiple times in the file'
+            })
+            processedRecords++
+            continue
+          }
+
+          try {
+            // Insert record
+            const { error: insertError } = await supabase
+              .from('detainees')
+              .insert({
+                full_name: record.full_name,
+                last_seen_location: record.last_seen_location,
+                date_of_detention: normalizeDate(record.date_of_detention),
+                detention_facility: record.detention_facility,
+                physical_description: record.physical_description,
+                age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null,
+                gender: validateGender(record.gender),
+                status: validateStatus(record.status),
+                additional_notes: record.additional_notes,
+                contact_info: record.contact_info,
+                organization
+              })
+
+            if (insertError) {
+              if (insertError.code === '23505') { // Unique violation
+                duplicateRecords++
+                errors.push({
+                  record: record.full_name,
+                  error: 'Duplicate record',
+                  details: 'This record already exists in the database'
+                })
+              } else {
+                invalidRecords++
+                errors.push({
+                  record: record.full_name,
+                  error: 'Failed to insert record',
+                  details: insertError.message
+                })
+              }
+            } else {
+              validRecords++
+              processedSet.add(record)
+            }
+          } catch (error) {
+            console.error('Error inserting record:', error)
+            invalidRecords++
+            errors.push({
+              record: record.full_name,
+              error: 'Failed to process record',
+              details: error instanceof Error ? error.message : 'Unknown error'
+            })
+          }
+
+          processedRecords++
+        }
+
+        // Final update
+        await updateUploadStatus(supabase, sessionId, {
+          status: 'completed',
+          totalRecords,
+          processedRecords,
+          validRecords,
+          invalidRecords,
+          duplicateRecords,
+          errors,
+          processingDetails
+        })
+      } catch (error) {
+        console.error('Error processing file:', error)
+        await updateUploadStatus(supabase, sessionId, {
+          status: 'failed',
+          totalRecords,
+          processedRecords: 0,
+          validRecords: 0,
+          invalidRecords: 0,
+          duplicateRecords: 0,
+          errors: [{
+            record: 'System Error',
+            error: 'Failed to process file',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          }],
+          processingDetails
+        })
+      }
+    })()
+
+    // Return session ID immediately
+    return NextResponse.json({ sessionId })
   } catch (error) {
-    console.error('Unexpected error:', error)
+    console.error('Upload error:', error)
     return NextResponse.json(
-      { error: "An unexpected error occurred", details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to process upload' },
       { status: 500 }
     )
   }

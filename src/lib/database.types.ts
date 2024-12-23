@@ -237,6 +237,20 @@ export interface Database {
           search_rank: number
         }[]
       }
+      search_detainees_enhanced: {
+        Args: {
+          query: string
+          page_size?: number
+          cursor?: {
+            id: string
+            rank: number
+            date: string
+          } | null
+          sort_ascending?: boolean
+          estimate_total?: boolean
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

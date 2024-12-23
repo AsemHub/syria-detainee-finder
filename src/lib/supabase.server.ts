@@ -16,55 +16,73 @@ if (!supabaseServiceKey) {
   throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
 }
 
-// Create a single supabase client for interacting with your database
-export const supabaseServer = createClient<Database>(
-  supabaseUrl,
-  supabaseServiceKey,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-    global: {
-      fetch: fetch
+// Create a Supabase client for server-side operations
+export const createServerSupabaseClient = () => {
+  return createClient<Database>(
+    supabaseUrl,
+    supabaseServiceKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        fetch: fetch
+      }
     }
-  }
-);
+  );
+};
+
+// Create a single supabase client for interacting with your database
+export const supabaseServer = createServerSupabaseClient();
 
 interface SearchResult {
   id: string;
-  fullName: string;
-  lastSeenLocation: string | null;
+  full_name: string;
+  last_seen_location: string | null;
   status: string;
   gender: string | null;
-  ageAtDetention: number | null;
-  dateOfDetention: string | null;
-  detentionFacility: string | null;
-  additionalNotes: string | null;
-  physicalDescription: string | null;
-  contactInfo: string | null;
-  lastUpdateDate: string | null;
+  age_at_detention: number | null;
+  date_of_detention: string | null;
+  detention_facility: string | null;
+  additional_notes: string | null;
+  physical_description: string | null;
+  contact_info: string | null;
+  last_update_date: string | null;
+  created_at: string;
+  search_rank?: number;
 }
 
 interface SearchResponse {
-  data: SearchResult[];
-  metadata: {
-    totalCount: number | null;
-    hasNextPage: boolean;
-    lastCursor: {
-      id: string;
-      rank: number;
-      date: string;
-    } | null;
-  };
+  results: SearchResult[];
+  totalCount: number | null;
+  currentPage: number | null;
+  totalPages: number | null;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  pageSize: number | null;
 }
 
 // Enhanced cache configuration
 const CACHE_CONFIG = {
-  maxSize: 100, // Maximum number of entries
-  ttlMs: 30000, // Time-to-live in milliseconds
-  minQueryLength: 2 // Minimum query length to cache
+  maxSize: 200,           // Increased from 100
+  ttlMs: 5 * 60 * 1000,  // Increased to 5 minutes
+  minQueryLength: 2,      // Minimum query length
+  popularQueryTtlMs: 15 * 60 * 1000,  // 15 minutes for popular queries
+  popularThreshold: 5,    // Number of hits to consider a query popular
+  queryHits: new Map<string, number>()
 };
+
+// Track popular queries
+function isPopularQuery(query: string): boolean {
+  const hits = CACHE_CONFIG.queryHits.get(query) || 0;
+  return hits >= CACHE_CONFIG.popularThreshold;
+}
+
+function trackQueryHit(query: string) {
+  const hits = (CACHE_CONFIG.queryHits.get(query) || 0) + 1;
+  CACHE_CONFIG.queryHits.set(query, hits);
+}
 
 // Improved cache implementation with LRU-like behavior
 const searchCache = new Map<string, SearchResponse & { timestamp: number }>();
@@ -119,59 +137,49 @@ function maintainCache() {
 export async function performSearch({
   searchText,
   pageSize = 20,
-  cursor = null,
+  pageNumber = 1,
   estimateTotal = true
 }: {
   searchText: string;
   pageSize?: number;
-  cursor?: { id: string; rank: number; date: string } | null;
+  pageNumber?: number;
   estimateTotal?: boolean;
 }): Promise<SearchResponse> {
-  // Cache key includes all search parameters
-  const cacheKey = JSON.stringify({ searchText, pageSize, cursor, estimateTotal });
-  
-  // Check cache first
-  const cachedResult = searchCache.get(cacheKey);
-  if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_CONFIG.ttlMs) {
-    cacheStats.hits++;
-    return cachedResult;
-  }
-  cacheStats.misses++;
-
-  const startTime = Date.now();
-
   try {
+    const normalizedSearchText = normalizeArabicText(searchText);
+    
     const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
-      params: {
-        search_query: searchText,
+      search_params: {
+        query: normalizedSearchText,
         page_size: pageSize,
-        cursor_id: cursor?.id,
-        cursor_rank: cursor?.rank,
-        cursor_date: cursor?.date,
+        page_number: pageNumber,
         estimate_total: estimateTotal
       }
     });
 
     if (error) throw error;
 
-    const response: SearchResponse = data;
-
-    // Cache the result
-    if (searchText.length >= CACHE_CONFIG.minQueryLength) {
-      maintainCache();
-      searchCache.set(cacheKey, { ...response, timestamp: Date.now() });
-    }
-
-    // Update performance stats
-    const responseTime = Date.now() - startTime;
-    cacheStats.totalSearches++;
-    cacheStats.avgResponseTime = 
-      (cacheStats.avgResponseTime * (cacheStats.totalSearches - 1) + responseTime) / 
-      cacheStats.totalSearches;
-
-    return response;
-  } catch (error) {
-    console.error('Search error:', error);
-    throw error;
+    const response = data as any;
+    console.log('Database response:', {
+      totalCount: response.totalCount,
+      currentPage: response.currentPage,
+      totalPages: response.totalPages,
+      hasNextPage: response.hasNextPage,
+      hasPreviousPage: response.hasPreviousPage,
+      resultCount: response.results?.length
+    });
+    
+    return {
+      results: response.results || [],
+      totalCount: response.totalCount || 0,
+      currentPage: response.currentPage || 1,
+      totalPages: response.totalPages || 1,
+      hasNextPage: response.hasNextPage || false,
+      hasPreviousPage: response.hasPreviousPage || false,
+      pageSize: response.pageSize || pageSize
+    };
+  } catch (error: any) {
+    console.error('Search failed:', error);
+    throw new Error('Failed to perform search', { cause: error });
   }
 }

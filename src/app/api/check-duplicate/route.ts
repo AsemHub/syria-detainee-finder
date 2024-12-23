@@ -8,25 +8,23 @@ export async function POST(request: Request) {
     
     // Perform exact match search first
     const exactMatches = await supabaseServer
-      .rpc('search_detainees', {
-        search_text: detainee.full_name,
-        location: detainee.last_seen_location || '',
-        min_age: 0,
-        max_age: 100,
-        gender: '',
-        status: ''
+      .rpc('search_detainees_enhanced', {
+        params: {
+          search_query: detainee.full_name,
+          page_size: 10,
+          estimate_total: false
+        }
       });
 
     // If no exact matches, try fuzzy search
     if (exactMatches.data?.length === 0) {
       const fuzzyMatches = await supabaseServer
-        .rpc('search_detainees', {
-          search_text: detainee.full_name,
-          location: '',
-          min_age: 0,
-          max_age: 100,
-          gender: '',
-          status: ''
+        .rpc('search_detainees_enhanced', {
+          params: {
+            search_query: detainee.full_name,
+            page_size: 10,
+            estimate_total: false
+          }
         });
 
       return NextResponse.json({

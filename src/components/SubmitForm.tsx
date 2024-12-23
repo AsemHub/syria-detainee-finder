@@ -37,33 +37,31 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const formSchema = z.object({
   full_name: z.string()
-    .min(2, "Name must be at least 2 characters")
-    .max(100, "Name must be less than 100 characters")
-    .regex(/^[\p{L}\s'-]+$/u, "Name can only contain letters, spaces, hyphens and apostrophes"),
+    .min(2, "يجب أن يكون الاسم مكونًا من حرفين على الأقل")
+    .max(100, "يجب أن يكون الاسم أقل من 100 حرف")
+    .regex(/^[\p{L}\s'-]+$/u, "يمكن أن يحتوي الاسم على أحرف ومسافات وشرطات فقط"),
   date_of_detention: z.string()
-    .refine(val => !val || !isNaN(Date.parse(val)), "Invalid date format")
+    .refine(val => !val || !isNaN(Date.parse(val)), "صيغة التاريخ غير صحيحة")
     .optional(),
   last_seen_location: z.string()
-    .min(2, "Location must be at least 2 characters")
-    .max(200, "Location must be less than 200 characters"),
+    .min(2, "يجب أن يكون الموقع مكونًا من حرفين على الأقل")
+    .max(200, "يجب أن يكون الموقع أقل من 200 حرف"),
   detention_facility: z.string()
-    .max(200, "Facility name must be less than 200 characters")
+    .max(200, "يجب أن يكون اسم المنشأة أقل من 200 حرف")
     .optional(),
   physical_description: z.string()
-    .max(1000, "Description must be less than 1000 characters")
+    .max(500, "يجب أن يكون الوصف أقل من 500 حرف")
     .optional(),
   age_at_detention: z.string()
-    .refine(val => !val || !isNaN(parseInt(val)), "Age must be a number")
-    .transform(val => val === "" ? "" : parseInt(val))
-    .refine(val => val === "" || (typeof val === "number" && val >= 0 && val <= 120), "Age must be between 0 and 120")
+    .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "العمر يجب أن يكون بين 0 و 120")
     .optional(),
-  gender: z.enum(["male", "female", "other"]),
-  status: z.enum(["missing", "released", "deceased"]),
+  status: z.enum(["missing", "in_custody", "released", "deceased", "unknown"]),
+  gender: z.enum(["male", "female", "unknown"]),
   contact_info: z.string()
-    .min(2, "Contact information is required")
-    .max(500, "Contact information must be less than 500 characters"),
+    .max(200, "يجب أن تكون معلومات الاتصال أقل من 200 حرف")
+    .optional(),
   additional_notes: z.string()
-    .max(2000, "Notes must be less than 2000 characters")
+    .max(1000, "يجب أن تكون الملاحظات الإضافية أقل من 1000 حرف")
     .optional(),
 })
 
@@ -94,8 +92,8 @@ export function SubmitForm() {
       detention_facility: "",
       physical_description: "",
       age_at_detention: "",
-      status: "missing" as const,
-      gender: "male" as const,
+      status: "missing",
+      gender: "male",
       contact_info: "",
       additional_notes: "",
     },
@@ -155,13 +153,19 @@ export function SubmitForm() {
     
     setIsSubmitting(true)
     try {
+      // Convert age_at_detention to number if it's a non-empty string
+      const processedValues = {
+        ...values,
+        age_at_detention: values.age_at_detention ? Number(values.age_at_detention) : null
+      }
+
       const response = await fetch("/api/submit", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           "Cache-Control": "no-cache"
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify(processedValues),
       })
 
       const data = await response.json()
@@ -203,88 +207,34 @@ export function SubmitForm() {
   }
 
   return (
-    <>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          <FormField
-            control={form.control}
-            name="full_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="Enter full name" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Enter the detainee&apos;s full name as accurately as possible
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <FormField
+          control={form.control}
+          name="full_name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>الاسم الكامل*</FormLabel>
+              <FormControl>
+                <Input placeholder="أدخل الاسم الكامل" {...field} />
+              </FormControl>
+              <FormDescription>
+                أدخل الاسم الكامل للشخص المعتقل
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="date_of_detention"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Date of Detention</FormLabel>
+                <FormLabel>تاريخ الاعتقال</FormLabel>
                 <FormControl>
                   <Input type="date" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Approximate date if exact date is unknown
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="last_seen_location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Last Seen Location</FormLabel>
-                <FormControl>
-                  <Input placeholder="City, Area, or specific location" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Where was the person last seen?
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="detention_facility"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Detention Facility</FormLabel>
-                <FormControl>
-                  <Input placeholder="If known" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Name of the detention facility if known
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="physical_description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Physical Description</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Height, build, distinguishing features, etc."
-                    {...field}
-                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -296,10 +246,68 @@ export function SubmitForm() {
             name="age_at_detention"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Age at Detention</FormLabel>
+                <FormLabel>العمر عند الاعتقال</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} />
+                  <Input type="number" placeholder="العمر" {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="last_seen_location"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>آخر موقع معروف*</FormLabel>
+              <FormControl>
+                <Input placeholder="المدينة، المنطقة" {...field} />
+              </FormControl>
+              <FormDescription>
+                أدخل آخر مكان تم رؤية الشخص فيه
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="detention_facility"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>مكان الاعتقال</FormLabel>
+              <FormControl>
+                <Input placeholder="اسم السجن أو مركز الاعتقال" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="status"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>الحالة*</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر الحالة" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="missing">مفقود</SelectItem>
+                    <SelectItem value="in_custody">قيد الاعتقال</SelectItem>
+                    <SelectItem value="released">مطلق سراح</SelectItem>
+                    <SelectItem value="deceased">متوفى</SelectItem>
+                    <SelectItem value="unknown">غير معروف</SelectItem>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -310,168 +318,89 @@ export function SubmitForm() {
             name="gender"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Gender</FormLabel>
+                <FormLabel>الجنس*</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select gender" />
+                      <SelectValue placeholder="اختر الجنس" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="male">ذكر</SelectItem>
+                    <SelectItem value="female">أنثى</SelectItem>
+                    <SelectItem value="unknown">غير معروف</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
+        </div>
 
-          <FormField
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Current Status</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="missing">Missing</SelectItem>
-                    <SelectItem value="released">Released</SelectItem>
-                    <SelectItem value="deceased">Deceased</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="contact_info"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Contact Information</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Your contact information for verification"
-                    {...field}
-                  />
-                </FormControl>
-                <FormDescription>
-                  This will not be publicly visible
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="additional_notes"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Additional Notes</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Any additional information that might be helpful"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {isChecking && (
-            <Alert>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <AlertTitle>Checking for duplicates...</AlertTitle>
-              <AlertDescription>
-                Please wait while we check for existing records.
-              </AlertDescription>
-            </Alert>
+        <FormField
+          control={form.control}
+          name="physical_description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>الوصف الجسدي</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="وصف للمظهر الجسدي، علامات مميزة، إلخ..."
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
+        />
 
-          {potentialMatches && (potentialMatches.exact.length > 0 || potentialMatches.similar.length > 0) && (
-            <Dialog open={true} onOpenChange={() => setPotentialMatches(null)}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Potential Matching Records Found</DialogTitle>
-                  <DialogDescription>
-                    We found some records that might be related to this person.
-                  </DialogDescription>
-                </DialogHeader>
-
-                {potentialMatches.exact.length > 0 && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Exact Matches:</h4>
-                    {potentialMatches.exact.map((match, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <p><strong>Name:</strong> {match.full_name}</p>
-                        <p><strong>Status:</strong> {match.status}</p>
-                        <p><strong>Last Seen:</strong> {match.last_seen_location}</p>
-                        {match.date_of_detention && (
-                          <p><strong>Detention Date:</strong> {new Date(match.date_of_detention).toLocaleDateString()}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {potentialMatches.similar.length > 0 && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Similar Names:</h4>
-                    {potentialMatches.similar.map((match, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <p><strong>Name:</strong> {match.full_name}</p>
-                        <p><strong>Status:</strong> {match.status}</p>
-                        <p><strong>Last Seen:</strong> {match.last_seen_location}</p>
-                        {match.date_of_detention && (
-                          <p><strong>Detention Date:</strong> {new Date(match.date_of_detention).toLocaleDateString()}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <DialogFooter className="sm:justify-start">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setPotentialMatches(null)}
-                  >
-                    Close
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setPotentialMatches(null)
-                      form.handleSubmit(onSubmit)()
-                    }}
-                  >
-                    Submit Anyway
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+        <FormField
+          control={form.control}
+          name="contact_info"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>معلومات الاتصال</FormLabel>
+              <FormControl>
+                <Input placeholder="رقم هاتف أو بريد إلكتروني للتواصل" {...field} />
+              </FormControl>
+              <FormDescription>
+                سيتم استخدام هذه المعلومات للتواصل في حالة وجود معلومات جديدة
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
           )}
+        />
 
-          <Button type="submit" disabled={isSubmitting || isChecking}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Submit"
-            )}
-          </Button>
-        </form>
-      </Form>
-    </>
+        <FormField
+          control={form.control}
+          name="additional_notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>ملاحظات إضافية</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="أي معلومات إضافية قد تكون مفيدة..."
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+              جاري التقديم...
+            </>
+          ) : (
+            "تقديم المعلومات"
+          )}
+        </Button>
+      </form>
+    </Form>
   )
 }

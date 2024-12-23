@@ -13,8 +13,8 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('Raw request body:', body);
         
-        const { query, pageSize, cursor, estimateTotal } = body;
-        console.log('Extracted parameters:', { query, pageSize, cursor, estimateTotal });
+        const { query, pageSize, pageNumber, estimateTotal } = body;
+        console.log('Extracted parameters:', { query, pageSize, pageNumber, estimateTotal });
 
         if (!query || typeof query !== 'string') {
             return NextResponse.json({ 
@@ -23,10 +23,10 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        if (cursor && (!cursor.id || !cursor.rank || !cursor.date)) {
+        if (pageNumber && (!Number.isInteger(pageNumber) || pageNumber < 1)) {
             return NextResponse.json({
-                error: 'Invalid cursor format',
-                debug: { receivedCursor: cursor }
+                error: 'Page number must be a positive integer',
+                debug: { receivedPageNumber: pageNumber }
             }, { status: 400 });
         }
 
@@ -34,19 +34,14 @@ export async function POST(request: Request) {
             const results = await performSearch({
                 searchText: query.trim(),
                 pageSize: pageSize || 20,
-                cursor,
-                estimateTotal: estimateTotal !== false
+                pageNumber: pageNumber || 1,
+                estimateTotal: estimateTotal ?? true  // Default to true if undefined
             });
             const duration = performance.now() - start;
             console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);
             
-            // Transform the response to match frontend expectations
-            return NextResponse.json({
-                results: results.data,
-                totalCount: results.metadata?.totalCount,
-                hasNextPage: results.metadata?.hasNextPage,
-                lastCursor: results.metadata?.lastCursor
-            });
+            // Return the response directly
+            return NextResponse.json(results);
         } catch (searchError: any) {
             console.error('Search operation failed:', {
                 error: searchError.message,
