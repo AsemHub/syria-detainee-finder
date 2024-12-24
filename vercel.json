@@ -1,10 +1,5 @@
 {
   "version": 2,
   "buildCommand": "next build",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key",
-    "OPENAI_API_KEY": "@openai_api_key"
-  }
+  "outputDirectory": ".next"
 }
