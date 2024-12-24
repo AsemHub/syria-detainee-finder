@@ -9,22 +9,19 @@ export async function POST(request: Request) {
     // Perform exact match search first
     const exactMatches = await supabaseServer
       .rpc('search_detainees_enhanced', {
-        params: {
-          search_query: detainee.full_name,
-          page_size: 10,
-          estimate_total: false
-        }
+        search_query: detainee.full_name,
+        page_size: 10,
+        estimate_total: false
       });
 
     // If no exact matches, try fuzzy search
     if (exactMatches.data?.length === 0) {
       const fuzzyMatches = await supabaseServer
         .rpc('search_detainees_enhanced', {
-          params: {
-            search_query: detainee.full_name,
-            page_size: 10,
-            estimate_total: false
-          }
+          search_query: detainee.full_name,
+          page_size: 10,
+          estimate_total: false,
+          fuzzy_search: true
         });
 
       return NextResponse.json({
