@@ -1,130 +1,103 @@
-# Syria Detainee Finder
+# الباحث عن المعتقلين | Syrian Detainee Finder
 
-A humanitarian web application dedicated to helping locate missing Syrian detainees and reuniting families. Built with Next.js 14, TypeScript, Tailwind CSS, and Shadcn UI components.
+منصة إنسانية مخصصة للمساعدة في العثور أو الحصول على معلومات عن المعتقلين السوريين المفقودين في محاولة للم شمل العائلات.
 
-## Features
+A humanitarian platform dedicated to helping locate and gather information about Syrian detainees, aiming to reunite families.
 
-- 🔍 Advanced search functionality for detainee records
-  - Full-text search
-  - Filter by date, location, status, and more
-  - Real-time results with relevance scoring
-- 📝 Submission form for new detainee information
-  - Structured data collection
-  - File upload support
-  - Form validation
-- 📊 Bulk CSV upload for organizations
-- 🌓 Dark/Light theme with custom green accent
-- 📱 Fully responsive design
-- ♿ Accessibility-first approach
-- 🔒 Secure data handling with Supabase
+## ✨ Features | المميزات
 
-## Tech Stack
+- 🌐 **Arabic-First Interface | واجهة عربية**
+  - Full RTL support | دعم كامل للغة العربية
+  - Localized UI components | واجهة مستخدم معربة
+  - Intuitive navigation | تصفح سهل وبديهي
 
-- **Framework:** Next.js 14 with App Router
-- **Language:** TypeScript
-- **Styling:** Tailwind CSS
-- **UI Components:** Shadcn UI
-- **Database:** Supabase
-- **Form Handling:** React Hook Form + Zod
-- **Date Handling:** date-fns
-- **Icons:** Lucide React
+- 📝 **Information Submission | تقديم المعلومات**
+  - User-friendly forms | نماذج سهلة الاستخدام
+  - Detailed data collection | جمع بيانات مفصلة
+  - Contact information tracking | تتبع معلومات الاتصال
 
-## Prerequisites
+- 📊 **Organization Tools | أدوات للمنظمات**
+  - Bulk CSV upload | رفع ملفات CSV
+  - Data validation | التحقق من صحة البيانات
+  - Duplicate detection | كشف التكرارات
 
-Before you begin, ensure you have:
-- Node.js 18.17 or later
+- 🎨 **Modern Design | تصميم عصري**
+  - Responsive layout | تصميم متجاوب
+  - Dark/Light modes | الوضع الليلي/النهاري
+  - Accessible components | مكونات سهلة الوصول
+
+## 🚀 Getting Started | البدء
+
+### Prerequisites | المتطلبات المسبقة
+
+- Node.js (v18+)
 - npm or yarn
-- A Supabase account and project
+- Supabase account
 
-## Getting Started
+### Installation | التثبيت
 
-1. Clone the repository:
+1. Clone the repository | نسخ المستودع
 ```bash
 git clone https://github.com/AsemHub/syria-detainee-finder.git
-cd syria-detainee-finder
 ```
 
-2. Install dependencies:
+2. Install dependencies | تثبيت المتطلبات
 ```bash
 npm install
+# or
+yarn install
 ```
 
-3. Set up environment variables:
-Create a `.env.local` file in the root directory with:
+3. Set up environment variables | إعداد متغيرات البيئة
 ```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-4. Run the development server:
+4. Run the development server | تشغيل خادم التطوير
 ```bash
 npm run dev
+# or
+yarn dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Built With | تم البناء باستخدام
 
-## Development Commands
+- [Next.js 14](https://nextjs.org/)
+- [Supabase](https://supabase.com/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [shadcn/ui](https://ui.shadcn.com/)
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run favicons` - Generate favicon assets
+## 📖 Usage | الاستخدام
 
-## Project Structure
+### For Individuals | للأفراد
+1. Visit "Submit Information" | زيارة صفحة "تقديم معلومات"
+2. Fill out the form | ملء النموذج
+3. Provide contact details | تقديم معلومات الاتصال
 
-```
-syria-detainee-finder/
-├── src/
-│   ├── app/             # Next.js App Router pages and API routes
-│   │   ├── api/        # API endpoints
-│   │   ├── about/      # About page
-│   │   ├── submit/     # Submit information page
-│   │   └── upload/     # Bulk upload page
-│   ├── components/      # React components
-│   │   ├── ui/        # Reusable UI components
-│   │   └── [feature]/ # Feature-specific components
-│   ├── hooks/          # Custom React hooks
-│   ├── lib/            # Utilities and configurations
-│   └── styles/         # Global styles
-├── public/             # Static assets
-└── scripts/           # Build and utility scripts
-```
+### For Organizations | للمنظمات
+1. Go to "Upload File" | الذهاب إلى صفحة "رفع ملف"
+2. Download CSV template | تحميل نموذج CSV
+3. Upload completed file | رفع الملف المكتمل
 
-## API Routes
+## 🤝 Contributing | المساهمة
 
-- `GET /api/search` - Search for detainees with filters
-- `POST /api/submit` - Submit new detainee information
-- `POST /api/documents/[id]` - Upload documents for a detainee
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Contributing
+المساهمات مرحب بها! لا تتردد في تقديم طلب سحب.
 
-This project is open to contributions. Please follow these steps:
+## 📄 License | الرخصة
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+This project is licensed under the MIT License.
 
-## Documentation
+هذا المشروع مرخص تحت رخصة MIT.
 
-For detailed technical documentation, please refer to [DOCUMENTATION.md](./DOCUMENTATION.md).
+## 📞 Contact | التواصل
 
-## Security
+Project Link | رابط المشروع: [https://github.com/AsemHub/syria-detainee-finder](https://github.com/AsemHub/syria-detainee-finder)
 
-- Never commit `.env` files
-- Keep API keys and sensitive data secure
-- Follow security best practices when handling personal information
-- Report security vulnerabilities responsibly
+## 🙏 Acknowledgments | شكر وتقدير
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Built with [Next.js](https://nextjs.org)
-- UI components from [shadcn/ui](https://ui.shadcn.com)
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Database by [Supabase](https://supabase.com)
-- Icons from [Lucide](https://lucide.dev)
+- Contributors and maintainers | المساهمون والقائمون على الصيانة
+- Organizations using the platform | المنظمات التي تستخدم المنصة
+- Syrian community for support and feedback | المجتمع السوري للدعم والملاحظات
