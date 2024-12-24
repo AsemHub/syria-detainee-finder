@@ -42,6 +42,4 @@ next-env.d.ts
 
 # Documentation
 /docs
-!README.md
-!search-functions.md
-!table-structu-e-and-current-search-configuration.md
+*.md

@@ -650,6 +650,20 @@ export async function POST(request: Request) {
   }
 }
 
+type ProcessingResult = {
+  total: number
+  processed: number
+  valid: number
+  invalid: number
+  duplicates: number
+  failedRecords: Array<{
+    record: any
+    error: string
+    errorType: string
+    field?: string
+  }>
+}
+
 // Separate function for background processing
 async function processFileInBackground(
   file: File, 
@@ -760,7 +774,6 @@ async function processFileInBackground(
     let duplicateRecords = 0
     let skippedDuplicates = 0
     const errors: Array<{ record: string; error: string; details?: string }> = []
-    const processedSet = new Set()
     const processingDetails = {
       invalid_dates: 0,
       missing_required: {
@@ -774,6 +787,7 @@ async function processFileInBackground(
         status: 0
       }
     }
+    const failedRecords: ProcessingResult['failedRecords'] = []
 
     // Start processing in background
     for (const record of data) {
@@ -813,25 +827,36 @@ async function processFileInBackground(
           details: validationResult.errorType
         });
         invalidRecords++;
+        failedRecords.push({
+          record,
+          error: validationResult.error || 'خطأ غير معروف',
+          errorType: validationResult.errorType,
+          field: validationResult.errorField
+        });
         processedRecords++;
         continue;
       }
 
       // Check for duplicates
       const recordKey = `${fullName}|${getFieldValue(record, ['last_seen_location', 'مكان آخر مشاهدة'])}|${getFieldValue(record, ['date_of_detention', 'تاريخ الاعتقال'])}`;
-      if (processedSet.has(recordKey)) {
+      if (isDuplicateInFile(record, data.slice(0, processedRecords))) {
         console.log('Duplicate record found:', { name: fullName, key: recordKey });
         errors.push({
           record: fullName,
-          error: 'هذا السجل موجود عدة مرات في الملف',
+          error: 'هذا السجل مكرر',
           details: 'duplicate'
         });
         duplicateRecords++;
         skippedDuplicates++; // Increment skipped duplicates counter
+        failedRecords.push({
+          record,
+          error: 'هذا السجل مكرر',
+          errorType: 'duplicate',
+          field: undefined
+        });
         processedRecords++;
         continue;
       }
-      processedSet.add(recordKey);
 
       try {
         console.log('Inserting record:', { name: fullName });
@@ -867,6 +892,12 @@ async function processFileInBackground(
               error: localizedError.error,
               details: localizedError.details
             });
+            failedRecords.push({
+              record,
+              error: localizedError.error,
+              errorType: 'duplicate_in_database',
+              field: undefined
+            });
           } else {
             invalidRecords++;
             errors.push({
@@ -874,11 +905,16 @@ async function processFileInBackground(
               error: 'خطأ في إدخال السجل',
               details: insertError.message
             });
+            failedRecords.push({
+              record,
+              error: 'خطأ في إدخال السجل',
+              errorType: 'insert_error',
+              field: undefined
+            });
           }
         } else {
           console.log('Record inserted successfully:', { name: fullName });
           validRecords++;
-          processedSet.add(record);
         }
       } catch (error) {
         console.error('Error inserting record:', {
@@ -890,6 +926,12 @@ async function processFileInBackground(
           record: fullName,
           error: 'Failed to process record',
           details: error instanceof Error ? error.message : 'Unknown error'
+        });
+        failedRecords.push({
+          record,
+          error: 'Failed to process record',
+          errorType: 'insert_error',
+          field: undefined
         });
       }
 
@@ -910,6 +952,20 @@ async function processFileInBackground(
       invalid: invalidRecords,
       duplicates: duplicateRecords
     });
+
+    // Store failed records in Supabase
+    if (failedRecords.length > 0) {
+      const { error: updateError } = await supabase
+        .from('upload_sessions')
+        .update({
+          failed_records: failedRecords
+        })
+        .eq('id', sessionId)
+
+      if (updateError) {
+        console.error('Error storing failed records:', updateError)
+      }
+    }
 
     // Final update
     await updateUploadStatus(supabase, sessionId, {

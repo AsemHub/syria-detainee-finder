@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Progress } from "./ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert"
-import { CheckCircle2, AlertCircle, Loader2, XCircle } from "lucide-react"
+import { CheckCircle2, AlertCircle, Loader2, XCircle, Download } from "lucide-react"
 import classNames from 'classnames'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Papa from 'papaparse';
@@ -559,6 +559,42 @@ export function UploadForm() {
             <XCircle className="h-4 w-4" />
             تحميل ملف آخر
           </Button>
+        </div>
+      )}
+
+      {(status === 'processing' || status === 'completed') && (
+        <div className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">إجمالي السجلات</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p>السجلات الصالحة</p>
+                  <span className="text-green-600">{stats.valid}</span>
+                </div>
+                <div>
+                  <p>السجلات المكررة</p>
+                  <span className="text-yellow-600">{stats.duplicates}</span>
+                </div>
+                <div>
+                  <p>السجلات غير الصالحة</p>
+                  <span className="text-red-600">{stats.invalid}</span>
+                </div>
+              </div>
+            </div>
+            {(stats.invalid > 0 || stats.duplicates > 0) && (
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={() => {
+                  window.location.href = `/api/download-report?sessionId=${sessionId}`
+                }}
+              >
+                <Download className="h-4 w-4" />
+                تحميل تقرير الأخطاء
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
