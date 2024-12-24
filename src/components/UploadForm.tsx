@@ -276,18 +276,18 @@ export function UploadForm() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">تحميل ملف CSV</h2>
+        <h2 className="text-2xl font-bold">رفع ملف CSV</h2>
         <Button
           variant="outline"
           onClick={() => setShowFormatGuide(!showFormatGuide)}
         >
-          {showFormatGuide ? "إخفاء دليل الشكل" : "إظهار دليل الشكل"}
+          {showFormatGuide ? "إخفاء دليل حقول الملف" : "إظهار دليل حقول الملف"}
         </Button>
       </div>
 
       {showFormatGuide && (
         <div className="bg-muted p-4 rounded-lg space-y-4">
-          <h3 className="font-semibold">شكل الملف المطلوب</h3>
+          <h3 className="font-semibold">حقول الملف المطلوبة</h3>
           <div className="grid gap-2">
             <div className="text-sm font-mono bg-background p-2 rounded overflow-x-auto whitespace-nowrap">
               {Object.keys(formatGuide).join(',')}
@@ -301,7 +301,7 @@ export function UploadForm() {
             </div>
           </div>
           <div className="text-sm text-muted-foreground mt-2">
-            ملاحظة: يمكنك تحميل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/test_comprehensive_detainees_v2.csv')}>ملف CSV العينة</Button> للرجوع إليه.
+            ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/test_comprehensive_detainees_v2.csv')}>ملف CSV العينة</Button> للرجوع إليه.
           </div>
         </div>
       )}
@@ -374,7 +374,7 @@ export function UploadForm() {
             {status === 'uploading' ? (
               <div className="flex items-center justify-center">
                 <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                <span>جاري التحميل...</span>
+                <span>جاري الرفع...</span>
               </div>
             ) : status === 'processing' ? (
               <div className="flex items-center justify-center">
@@ -382,7 +382,7 @@ export function UploadForm() {
                 <span>جاري المعالجة...</span>
               </div>
             ) : (
-              "تحميل الملف"
+              "رفع الملف"
             )}
           </Button>
         </form>
@@ -393,7 +393,7 @@ export function UploadForm() {
         <div className="space-y-4">
           <div className="flex items-center justify-between text-sm">
             <span>
-              {status === 'uploading' ? 'جاري تحميل الملف...' : 
+              {status === 'uploading' ? 'جاري الرفع...' : 
                 currentRecord ? `جاري معالجة: ${currentRecord}` : 'جاري المعالجة...'}
             </span>
             <span>{processingProgress}%</span>

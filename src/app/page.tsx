@@ -7,10 +7,10 @@ export default function Home() {
     <div className="container py-6 space-y-8" dir="rtl">
       <div className="space-y-4 text-center">
         <h1 className="text-4xl font-bold tracking-tight">
-          باحث عن المعتقلين السوريين
+          الباحث عن المعتقلين
         </h1>
         <p className="text-muted-foreground text-lg">
-          منصة إنسانية مخصصة للمساعدة في العثور على المعتقلين السوريين المفقودين ولم شمل العائلات
+          منصة إنسانية مخصصة للمساعدة في العثور أو الحصول على معلومات عن المعتقلين السوريين المفقودين في محاولة للم شمل العائلات
         </p>
       </div>
 
@@ -30,16 +30,16 @@ export default function Home() {
           <CardHeader className="p-0">
             <CardTitle>تقديم معلومات</CardTitle>
             <CardDescription>
-              تقديم معلومات جديدة عن المعتقلين أو تحديث السجلات الموجودة
+              تقديم معلومات عن معتقلين أو أشخاص مفقودين
             </CardDescription>
           </CardHeader>
         </Card>
 
         <Card className="p-6">
           <CardHeader className="p-0">
-            <CardTitle>تحميل ملف</CardTitle>
+            <CardTitle>رفع ملف</CardTitle>
             <CardDescription>
-              يمكن للمنظمات تحميل سجلات متعددة عن طريق ملف CSV
+              يمكن للمنظمات رفع سجلات متعددة عن طريق ملف CSV
             </CardDescription>
           </CardHeader>
         </Card>
