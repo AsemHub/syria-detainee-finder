@@ -4,70 +4,183 @@
 
 @layer base {
   :root {
-    --font-sans: var(--font-arabic), system-ui, sans-serif;
-    
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
+    --foreground: 0 0% 0%;
+    
+    /* Green theme colors */
+    --primary: 122 39% 49%;
+    --primary-dark: 122 39% 39%;
+    --primary-light: 122 39% 59%;
+    
+    /* Monochromatic colors */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
- 
+    --card-foreground: 0 0% 0%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
- 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
- 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
- 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
- 
-    --accent: 142.1 76.2% 36.3%;
-    --accent-foreground: 355.7 100% 97.3%;
- 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
- 
-    --radius: 0.5rem;
+    --popover-foreground: 0 0% 0%;
+    --secondary: 122 30% 96%;
+    --secondary-foreground: 122 39% 49%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 122 30% 96%;
+    --accent-foreground: 122 39% 49%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 122 39% 49%;
+    --radius: 0.75rem;
   }
  
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
- 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
- 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
- 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
- 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
- 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
- 
-    --accent: 142.1 76.2% 36.3%;
-    --accent-foreground: 355.7 100% 97.3%;
- 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
- 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 122 30% 5%;
+    --foreground: 0 0% 98%;
+    
+    /* Green theme colors */
+    --primary: 122 39% 49%;
+    --primary-dark: 122 39% 39%;
+    --primary-light: 122 39% 59%;
+    
+    /* Monochromatic colors */
+    --card: 122 30% 5%;
+    --card-foreground: 0 0% 98%;
+    --popover: 122 30% 5%;
+    --popover-foreground: 0 0% 98%;
+    --secondary: 122 30% 15%;
+    --secondary-foreground: 122 39% 49%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 122 30% 15%;
+    --accent-foreground: 122 39% 49%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 122 30% 15%;
+    --input: 122 30% 15%;
+    --ring: 122 39% 49%;
   }
 }
- 
+
+.gradient-border {
+  position: relative;
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, rgb(var(--primary)), rgb(var(--primary-light)));
+  padding: 1px;
+}
+
+.gradient-border > * {
+  background: rgb(var(--background));
+  border-radius: calc(var(--radius) - 1px);
+}
+
+.submit-form {
+  @apply space-y-6 rounded-lg p-8;
+  background: linear-gradient(145deg, 
+    rgba(var(--background)/1),
+    rgba(var(--primary)/0.05)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.form-header {
+  @apply text-2xl font-bold text-center mb-6;
+  background: linear-gradient(145deg, rgb(var(--primary)), rgb(var(--primary-light)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.form-field {
+  @apply p-4 rounded-lg;
+  background: linear-gradient(145deg,
+    rgba(var(--background)/1),
+    rgba(var(--background)/0.95)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.form-field:hover {
+  background: linear-gradient(145deg,
+    rgba(var(--background)/0.95),
+    rgba(var(--background)/1)
+  );
+  border-color: rgba(var(--primary)/0.2);
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.submit-button {
+  @apply w-full py-3 px-6 rounded-lg font-semibold text-white transition-all duration-200;
+  background: linear-gradient(145deg, rgb(var(--primary)), rgb(var(--primary-light)));
+  border: none;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.submit-button:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(145deg, rgb(var(--primary-light)), rgb(var(--primary)));
+  box-shadow: 
+    0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.submit-button:active {
+  transform: translateY(0);
+  background: linear-gradient(145deg, rgb(var(--primary-dark)), rgb(var(--primary)));
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.nav-container {
+  background: linear-gradient(145deg,
+    rgba(var(--background)/0.95),
+    rgba(var(--background)/0.98)
+  );
+  border-bottom: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.card {
+  background: linear-gradient(145deg,
+    rgba(var(--background)/1),
+    rgba(var(--background)/0.95)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.input {
+  background: linear-gradient(145deg,
+    rgba(var(--background)/0.95),
+    rgba(var(--background)/1)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+}
+
+.input:focus {
+  border-color: rgba(var(--primary)/0.2);
+  box-shadow: 0 0 0 2px rgba(var(--primary)/0.1);
+}
+
+.button {
+  background: linear-gradient(145deg, rgb(var(--primary)), rgb(var(--primary-light)));
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.button:hover {
+  background: linear-gradient(145deg, rgb(var(--primary-light)), rgb(var(--primary)));
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.button:active {
+  background: linear-gradient(145deg, rgb(var(--primary-dark)), rgb(var(--primary)));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -110,4 +223,189 @@
 [dir="rtl"] .dropdown-content {
   right: 0;
   left: auto;
+}
+
+/* Mobile touch device optimizations */
+@media (hover: none) {
+  button:hover,
+  .button:hover {
+    background-color: var(--accent);
+  }
+  
+  button:active,
+  .button:active {
+    background-color: hsl(var(--accent) / 0.9);
+  }
+}
+
+/* Simple date input styling */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+[dir="rtl"] input[type="date"] {
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  input[type="date"] {
+    font-size: 16px;
+    padding: 8px;
+  }
+}
+
+/* iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* iOS button hover/active states */
+  button,
+  .button {
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+
+  button:active,
+  .button:active {
+    background-color: hsl(var(--accent) / 0.8) !important;
+  }
+
+  /* Ensure proper tap highlight on iOS */
+  input,
+  select,
+  textarea,
+  button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+/* General mobile optimizations */
+@media (hover: none) {
+  button:active,
+  .button:active {
+    background-color: hsl(var(--accent) / 0.8) !important;
+  }
+}
+
+/* Ensure proper sizing on mobile */
+.form-control,
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  font-size: 16px; /* Prevents iOS zoom on focus */
+  padding: 0.5rem;
+}
+
+/* Fix iOS form zoom */
+@media screen and (-webkit-min-device-pixel-ratio: 0) { 
+  select,
+  textarea,
+  input {
+    font-size: 16px !important;
+  }
+}
+
+/* Form container */
+.form-container {
+  @apply p-6 rounded-lg;
+  background: linear-gradient(145deg, 
+    rgba(var(--background)/1),
+    rgba(var(--primary)/0.05)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Form fields */
+.form-field {
+  @apply p-4 rounded-lg;
+  background: rgba(var(--card)/0.95);
+  border: 1px solid rgba(var(--primary)/0.1);
+  transition: all 0.2s ease-in-out;
+}
+
+.form-field:hover {
+  border-color: rgba(var(--primary)/0.2);
+  box-shadow: 0 2px 4px rgba(var(--primary)/0.1);
+}
+
+/* Input fields */
+.input-field {
+  @apply w-full px-4 py-2 rounded-md;
+  background: rgba(var(--background)/0.95);
+  border: 1px solid rgba(var(--primary)/0.2);
+  transition: all 0.2s ease-in-out;
+}
+
+.input-field:focus {
+  border-color: rgba(var(--primary)/0.5);
+  box-shadow: 0 0 0 2px rgba(var(--primary)/0.2);
+}
+
+/* Buttons */
+.button-primary {
+  @apply px-4 py-2 rounded-md font-medium text-white;
+  background: linear-gradient(145deg, 
+    rgb(var(--primary)), 
+    rgb(var(--primary-light))
+  );
+  border: none;
+  transition: all 0.2s ease-in-out;
+}
+
+.button-primary:hover {
+  background: linear-gradient(145deg, 
+    rgb(var(--primary-light)), 
+    rgb(var(--primary))
+  );
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.button-primary:active {
+  background: linear-gradient(145deg, 
+    rgb(var(--primary-dark)), 
+    rgb(var(--primary))
+  );
+  transform: translateY(0);
+}
+
+/* Headers */
+.gradient-header {
+  @apply font-bold;
+  background: linear-gradient(145deg, 
+    rgb(var(--primary)), 
+    rgb(var(--primary-light))
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Navigation */
+.nav-container {
+  background: linear-gradient(145deg,
+    rgba(var(--background)/0.95),
+    rgba(var(--background)/0.98)
+  );
+  border-bottom: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* Cards */
+.card {
+  @apply p-4 rounded-lg;
+  background: linear-gradient(145deg,
+    rgba(var(--background)/0.95),
+    rgba(var(--background)/1)
+  );
+  border: 1px solid rgba(var(--primary)/0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease-in-out;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }

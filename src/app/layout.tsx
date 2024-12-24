@@ -1,22 +1,13 @@
-import { Inter } from "next/font/google";
-import { Noto_Sans_Arabic } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeProvider as NextThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
+import { arabic } from "@/lib/fonts";
+import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/Navbar";
-import { metadata } from "./metadata";
 
 // Import styles in correct order
 import "./globals.css";
 import "react-day-picker/dist/style.css";
 import "@/styles/calendar.css";
-
-const inter = Inter({ subsets: ["latin"] });
-const arabic = Noto_Sans_Arabic({ 
-  subsets: ["arabic"],
-  variable: '--font-arabic',
-});
-
-export { metadata };
 
 export default function RootLayout({
   children,
@@ -25,17 +16,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`${inter.className} ${arabic.variable}`}>
-        <ThemeProvider
+      <body className={cn("min-h-screen bg-background font-sans antialiased", arabic.variable)}>
+        <NextThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >
-          <Navbar />
-          <main>{children}</main>
-          <Toaster />
-        </ThemeProvider>
+          <div className="relative flex min-h-screen flex-col">
+            <Navbar />
+            <div className="flex-1">{children}</div>
+            <Toaster />
+          </div>
+        </NextThemeProvider>
       </body>
     </html>
   );

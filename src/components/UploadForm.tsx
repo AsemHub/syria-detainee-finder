@@ -141,7 +141,7 @@ export function UploadForm() {
             total: data.total_records,
             valid: data.valid_records,
             invalid: data.invalid_records,
-            duplicates: data.duplicate_records
+            duplicates: data.duplicate_records + data.skipped_duplicates // Count both types of duplicates
           })
 
           // Update current record if available
@@ -158,7 +158,7 @@ export function UploadForm() {
             setStatsDetails({
               total: data.total_records,
               processed: data.processed_records,
-              duplicates: data.duplicate_records,
+              duplicates: data.skipped_duplicates,
               invalid_dates: data.processing_details.invalid_dates,
               missing_required: data.processing_details.missing_required,
               invalid_data: data.processing_details.invalid_data
@@ -223,14 +223,15 @@ export function UploadForm() {
         body: formData,
       })
 
-      const uploadResult = await response.json()
-
       if (!response.ok) {
-        throw new Error(uploadResult.error || 'Upload failed')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Upload failed')
       }
 
+      const { sessionId } = await response.json()
+
       // Set session ID and switch to processing state
-      setSessionId(uploadResult.sessionId)
+      setSessionId(sessionId)
       setStatus('processing')
       
     } catch (error) {
@@ -342,9 +343,21 @@ export function UploadForm() {
                 <FormControl>
                   <Input
                     type="file"
-                    accept=".csv"
+                    accept="text/csv,.csv"
                     ref={fileInputRef}
-                    onChange={(e) => handleFileChange(e, onChange)}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        // Create a new File object with the correct MIME type
+                        const csvFile = new File(
+                          [file],
+                          file.name,
+                          { type: 'text/csv' }
+                        )
+                        onChange(csvFile)
+                        setHasFile(true)
+                      }
+                    }}
                     className="rtl"
                   />
                 </FormControl>
@@ -502,49 +515,34 @@ export function UploadForm() {
 
               {/* Detailed errors grouped by type */}
               {errors.length > 0 && (
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>تفاصيل الأخطاء</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      {/* Group errors by type */}
-                      {(() => {
-                        const errorsByType = errors.reduce((acc, error) => {
-                          const type = error.error || 'other';
-                          if (!acc[type]) acc[type] = [];
-                          acc[type].push(error);
-                          return acc;
-                        }, {} as Record<string, typeof errors>);
-
-                        return Object.entries(errorsByType).map(([type, typeErrors]) => (
-                          <div key={type} className="space-y-2">
-                            <h4 className="font-semibold">
-                              {type === 'missing_required' && 'حقول مطلوبة مفقودة'}
-                              {type === 'invalid_date' && 'تواريخ غير صالحة'}
-                              {type === 'invalid_data' && 'بيانات غير صالحة'}
-                              {type === 'duplicate' && 'سجلات مكررة'}
-                              {type === 'other' && 'أخطاء أخرى'}
-                            </h4>
-                            <div className="space-y-2">
-                              {typeErrors.map((error, index) => {
-                                // Skip lines that are CSV comments
-                                if (error.record.startsWith('#')) return null;
-                                
-                                return (
-                                  <div key={index} className="bg-destructive/10 dark:bg-destructive/20 border border-destructive/20 dark:border-destructive/30 p-3 rounded-lg">
-                                    <div className="font-semibold text-foreground">{error.record}</div>
-                                    <div className="text-sm text-destructive dark:text-destructive/90">{error.details}</div>
-                                  </div>
-                                );
-                              })}
+                <div className="space-y-4">
+                  {Object.entries(errors.reduce((acc, error) => {
+                    const type = error.error || 'other';
+                    if (!acc[type]) acc[type] = [];
+                    acc[type].push(error);
+                    return acc;
+                  }, {} as Record<string, typeof errors>)).map(([type, typeErrors]) => {
+                    const title = type === 'missing_required' ? 'حقول مفقودة' :
+                                 type === 'invalid_date' ? 'تواريخ غير صحيحة' :
+                                 type === 'invalid_data' ? 'بيانات غير صحيحة' :
+                                 type === 'duplicate' ? 'سجلات مكررة' : 'أخطاء أخرى';
+                    
+                    return (
+                      <div key={type} className="bg-background/50 p-4 rounded-lg border">
+                        <h4 className="font-semibold mb-3 text-foreground">{title}</h4>
+                        <div className="space-y-2">
+                          {typeErrors.map((error, index) => (
+                            <div key={index} className="bg-destructive/10 dark:bg-destructive/20 border border-destructive/20 dark:border-destructive/30 p-3 rounded-lg">
+                              <div className="font-semibold text-foreground">{error.record}</div>
+                              <div className="text-sm text-destructive dark:text-destructive/90">{error.error}</div>
+                              {error.details && <div className="text-xs text-destructive/90 dark:text-destructive/80 mt-1">{error.details}</div>}
                             </div>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </CardContent>
-                </Card>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -588,11 +586,9 @@ export function UploadForm() {
           <ul className="space-y-2">
             {errors.map((error, index) => (
               <li key={index} className="text-sm">
-                <span className="font-medium text-foreground">{error.record}:</span>{" "}
+                <span className="font-medium text-foreground">{error.record || 'Unknown Record'}: </span>
                 <span className="text-destructive dark:text-destructive/90">{error.error}</span>
-                {error.details && (
-                  <p className="text-xs text-destructive/90 dark:text-destructive/80 mt-1">{error.details}</p>
-                )}
+                {error.details && <p className="text-xs text-destructive/90 dark:text-destructive/80 mt-1">{error.details}</p>}
               </li>
             ))}
           </ul>
