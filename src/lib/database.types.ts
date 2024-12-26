@@ -8,7 +8,7 @@ export type Json =
 
 export type DetaineeStatus = 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown';
 export type DetaineeGender = 'male' | 'female' | 'unknown';
-export type CsvUploadStatus = 'processing' | 'completed' | 'failed';
+export type CsvUploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface Database {
   public: {
@@ -17,65 +17,79 @@ export interface Database {
         Row: {
           id: string
           full_name: string
+          original_name: string | null
+          normalized_name: string | null
           date_of_detention: string | null
-          last_seen_location: string
+          effective_date: string | null
+          last_seen_location: string | null
           detention_facility: string | null
           physical_description: string | null
           age_at_detention: number | null
           gender: DetaineeGender
+          gender_terms: string | null
           status: DetaineeStatus
           last_update_date: string
           contact_info: string | null
           additional_notes: string | null
           created_at: string
-          search_vector: unknown | null
           source_organization: string
           source_document_id: string | null
-          valid_leap_year_date: boolean
-          record_validation: string | null
-          record_processing_status: string | null
+          organization: string | null
+          original_organization: string | null
+          upload_session_id: string | null
+          search_vector: unknown | null
+          name_fts: unknown | null
+          location_fts: unknown | null
+          description_fts: unknown | null
+          contact_fts: unknown | null
         }
         Insert: {
           id?: string
           full_name: string
+          original_name?: string | null
+          normalized_name?: string | null
           date_of_detention?: string | null
-          last_seen_location: string
+          effective_date?: string | null
+          last_seen_location?: string | null
           detention_facility?: string | null
           physical_description?: string | null
           age_at_detention?: number | null
           gender?: DetaineeGender
+          gender_terms?: string | null
           status?: DetaineeStatus
           last_update_date?: string
           contact_info?: string | null
           additional_notes?: string | null
           created_at?: string
-          search_vector?: unknown | null
           source_organization?: string
           source_document_id?: string | null
-          valid_leap_year_date?: boolean
-          record_validation?: string | null
-          record_processing_status?: string | null
+          organization?: string | null
+          original_organization?: string | null
+          upload_session_id?: string | null
         }
         Update: {
           id?: string
           full_name?: string
+          original_name?: string | null
+          normalized_name?: string | null
           date_of_detention?: string | null
-          last_seen_location?: string
+          effective_date?: string | null
+          last_seen_location?: string | null
           detention_facility?: string | null
           physical_description?: string | null
           age_at_detention?: number | null
           gender?: DetaineeGender
+          gender_terms?: string | null
           status?: DetaineeStatus
           last_update_date?: string
           contact_info?: string | null
           additional_notes?: string | null
           created_at?: string
-          search_vector?: unknown | null
           source_organization?: string
           source_document_id?: string | null
-          valid_leap_year_date?: boolean
-          record_validation?: string | null
-          record_processing_status?: string | null
+          organization?: string | null
+          original_organization?: string | null
+          upload_session_id?: string | null
         }
       }
       documents: {
@@ -88,7 +102,7 @@ export interface Database {
           total_records: number
           processed_records: number
           skipped_duplicates: number
-          status: 'processing' | 'completed' | 'failed'
+          status: CsvUploadStatus
           error_message: string | null
           processing_details: Json
           created_at: string
@@ -105,7 +119,7 @@ export interface Database {
           total_records?: number
           processed_records?: number
           skipped_duplicates?: number
-          status?: 'processing' | 'completed' | 'failed'
+          status?: CsvUploadStatus
           error_message?: string | null
           processing_details?: Json
           created_at?: string
@@ -122,7 +136,7 @@ export interface Database {
           total_records?: number
           processed_records?: number
           skipped_duplicates?: number
-          status?: 'processing' | 'completed' | 'failed'
+          status?: CsvUploadStatus
           error_message?: string | null
           processing_details?: Json
           created_at?: string
@@ -135,50 +149,77 @@ export interface Database {
         Row: {
           id: string
           file_name: string
-          file_url: string
-          file_size: number
-          mime_type: string
+          file_url: string | null
+          file_size: number | null
+          mime_type: string | null
           uploaded_by: string
           total_records: number
           processed_records: number
           skipped_duplicates: number
-          status: 'processing' | 'completed' | 'failed'
+          valid_records: number
+          invalid_records: number
+          duplicate_records: number
+          status: CsvUploadStatus
           error_message: string | null
+          errors: Json
+          failed_records: Json | null
           processing_details: Json
           created_at: string
           updated_at: string
+          last_update: string
+          completed_at: string | null
+          organization: string
+          current_record: string | null
         }
         Insert: {
           id?: string
           file_name: string
-          file_url: string
-          file_size: number
-          mime_type: string
-          uploaded_by: string
-          total_records?: number
-          processed_records?: number
-          skipped_duplicates?: number
-          status?: 'processing' | 'completed' | 'failed'
-          error_message?: string | null
-          processing_details?: Json
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          file_name?: string
-          file_url?: string
-          file_size?: number
-          mime_type?: string
+          file_url?: string | null
+          file_size?: number | null
+          mime_type?: string | null
           uploaded_by?: string
           total_records?: number
           processed_records?: number
           skipped_duplicates?: number
-          status?: 'processing' | 'completed' | 'failed'
+          valid_records?: number
+          invalid_records?: number
+          duplicate_records?: number
+          status?: CsvUploadStatus
           error_message?: string | null
+          errors?: Json
+          failed_records?: Json | null
           processing_details?: Json
           created_at?: string
           updated_at?: string
+          last_update?: string
+          completed_at?: string | null
+          organization: string
+          current_record?: string | null
+        }
+        Update: {
+          id?: string
+          file_name?: string
+          file_url?: string | null
+          file_size?: number | null
+          mime_type?: string | null
+          uploaded_by?: string
+          total_records?: number
+          processed_records?: number
+          skipped_duplicates?: number
+          valid_records?: number
+          invalid_records?: number
+          duplicate_records?: number
+          status?: CsvUploadStatus
+          error_message?: string | null
+          errors?: Json
+          failed_records?: Json | null
+          processing_details?: Json
+          created_at?: string
+          updated_at?: string
+          last_update?: string
+          completed_at?: string | null
+          organization?: string
+          current_record?: string | null
         }
       }
       csv_upload_records: {
@@ -239,17 +280,30 @@ export interface Database {
       }
       search_detainees_enhanced: {
         Args: {
-          query: string
-          page_size?: number
-          cursor?: {
-            id: string
-            rank: number
-            date: string
-          } | null
-          sort_ascending?: boolean
-          estimate_total?: boolean
+          search_params: {
+            query: string;
+            page_size?: number;
+            page_number?: number;
+            sort_ascending?: boolean;
+            estimate_total?: boolean;
+          }
         }
         Returns: Json
+      }
+      get_detainee_documents: {
+        Args: {
+          detainee_uuid: string
+        }
+        Returns: {
+          id: string
+          detainee_id: string
+          file_url: string
+          document_type: string
+          submission_date: string
+          description: string | null
+          file_name: string
+          created_at: string
+        }[]
       }
     }
     Enums: {

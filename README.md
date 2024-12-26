@@ -61,6 +61,30 @@ npm run dev
 yarn dev
 ```
 
+### Database Setup | إعداد قاعدة البيانات
+
+1. Create a new Supabase project | إنشاء مشروع Supabase جديد
+
+2. Run the SQL setup files in order | تشغيل ملفات SQL بالترتيب:
+   - Run `01_initial_setup.sql` first | تشغيل `01_initial_setup.sql` أولاً
+   - Then run `02_search_and_functions.sql` | ثم تشغيل `02_search_and_functions.sql`
+
+   These files will set up: | هذه الملفات ستقوم بإعداد:
+   - Database schema | هيكل قاعدة البيانات
+   - Search functions | دوال البحث
+   - Arabic text normalization | تطبيع النص العربي
+   - Indexes and permissions | الفهارس والصلاحيات
+
+3. Get your Supabase credentials | الحصول على بيانات اعتماد Supabase:
+   - Project URL | رابط المشروع
+   - Anon Key | مفتاح الوصول المجهول
+
+4. Update environment variables | تحديث متغيرات البيئة:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
 ## 🛠️ Built With | تم البناء باستخدام
 
 - [Next.js 14](https://nextjs.org/)

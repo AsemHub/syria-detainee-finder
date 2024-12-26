@@ -1,21 +1,4 @@
--- Drop existing triggers if any
-DROP TRIGGER IF EXISTS update_normalized_name ON detainees;
-DROP TRIGGER IF EXISTS insert_normalized_name ON detainees;
-
--- Drop existing functions
-DROP FUNCTION IF EXISTS public.search_detainees_enhanced(jsonb) CASCADE;
-DROP FUNCTION IF EXISTS public.search_detainees(text, int, text, float, timestamp, boolean) CASCADE;
-DROP FUNCTION IF EXISTS public.normalize_arabic_text(text) CASCADE;
-DROP MATERIALIZED VIEW IF EXISTS mv_detainees_search;
-
--- Drop existing columns
-ALTER TABLE detainees
-    DROP COLUMN IF EXISTS name_fts,
-    DROP COLUMN IF EXISTS location_fts,
-    DROP COLUMN IF EXISTS description_fts,
-    DROP COLUMN IF EXISTS contact_fts,
-    DROP COLUMN IF EXISTS gender_terms,
-    DROP COLUMN IF EXISTS normalized_name;
+-- Syria Detainee Finder Search Functions and Extensions
 
 -- Create the Arabic text normalization function
 CREATE OR REPLACE FUNCTION public.normalize_arabic_text(input_text text)
@@ -47,8 +30,8 @@ BEGIN
     -- Normalize alef forms
     normalized := regexp_replace(normalized, 'ٱ|إ|آ|ٲ|ٳ|ٵ', 'ا', 'g');
 
-    -- Normalize teh marbuta and heh
-    normalized := regexp_replace(normalized, 'ة', 'ه', 'g');
+    -- Normalize teh marbuta and heh at word end
+    normalized := regexp_replace(normalized, 'ه\M', 'ة', 'g');  -- Convert final ه to ة
 
     -- Normalize alef maksura and yeh
     normalized := regexp_replace(normalized, '[ىیي]', 'ي', 'g');
@@ -73,7 +56,35 @@ BEGIN
 END;
 $$;
 
--- Add normalized text columns
+-- Create function to check if text contains Arabic characters
+CREATE OR REPLACE FUNCTION public.contains_arabic(text_to_check text)
+RETURNS boolean AS $$
+BEGIN
+    RETURN text_to_check ~ '[؀-ۿ]';
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Create the name normalization function
+CREATE OR REPLACE FUNCTION normalize_name(name text)
+RETURNS text AS $$
+BEGIN
+    IF name IS NULL THEN
+        RETURN NULL;
+    END IF;
+    
+    RETURN normalize_arabic_text(name);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Create or replace function for effective date
+CREATE OR REPLACE FUNCTION get_effective_date(detention_date date)
+RETURNS date AS $$
+BEGIN
+    RETURN COALESCE(detention_date, '1900-01-01'::date);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Add normalized text columns and effective date
 ALTER TABLE detainees
     ADD COLUMN IF NOT EXISTS name_fts tsvector GENERATED ALWAYS AS (to_tsvector('arabic', normalize_arabic_text(COALESCE(full_name, '')))) STORED,
     ADD COLUMN IF NOT EXISTS location_fts tsvector GENERATED ALWAYS AS (to_tsvector('arabic', normalize_arabic_text(COALESCE(last_seen_location, '')))) STORED,
@@ -85,18 +96,31 @@ ALTER TABLE detainees
             WHEN gender = 'male' THEN 'ذكر رجل رجال شاب ولد مذكر'
             ELSE ''
         END
+    ) STORED,
+    ADD COLUMN IF NOT EXISTS normalized_name text GENERATED ALWAYS AS (normalize_name(full_name)) STORED,
+    ADD COLUMN IF NOT EXISTS effective_date date GENERATED ALWAYS AS (get_effective_date(date_of_detention::date)) STORED,
+    ADD COLUMN IF NOT EXISTS search_vector tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(full_name), '')), 'A') ||
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(last_seen_location), '')), 'B') ||
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(detention_facility), '')), 'C') ||
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(physical_description), '')), 'D') ||
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(additional_notes), '')), 'D') ||
+        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(gender_terms), '')), 'B')
     ) STORED;
 
--- Drop the auto-refresh trigger and function
-DROP TRIGGER IF EXISTS refresh_search_view_trigger ON detainees;
-DROP FUNCTION IF EXISTS refresh_search_view CASCADE;
+-- Create unique index on normalized name and effective date
+DROP INDEX IF EXISTS unique_detainee_record_normalized;
+CREATE UNIQUE INDEX unique_detainee_record_normalized 
+ON detainees (normalized_name, effective_date, organization) 
+WHERE normalized_name IS NOT NULL;
 
--- Drop and recreate materialized view
+-- Create materialized view for search
 DROP MATERIALIZED VIEW IF EXISTS mv_detainees_search;
 CREATE MATERIALIZED VIEW mv_detainees_search AS
 SELECT
     d.id,
     d.full_name,
+    d.original_name,
     d.date_of_detention,
     d.last_seen_location,
     d.detention_facility,
@@ -109,100 +133,17 @@ SELECT
     d.created_at,
     d.last_update_date,
     d.source_organization,
-    d.source_document_id,
     d.organization,
-    to_tsvector('arabic', COALESCE(normalize_arabic_text(d.full_name), '')) ||
-    to_tsvector('arabic', COALESCE(normalize_arabic_text(d.last_seen_location), '')) ||
-    to_tsvector('arabic', COALESCE(normalize_arabic_text(d.detention_facility), '')) ||
-    to_tsvector('arabic', COALESCE(normalize_arabic_text(d.physical_description), '')) ||
-    to_tsvector('arabic', COALESCE(normalize_arabic_text(d.additional_notes), '')) as search_vector,
-    CASE 
-        WHEN d.gender = 'female' THEN 'انثى أنثى امرأة نساء سيدة فتاة بنت نسائي مؤنث'
-        WHEN d.gender = 'male' THEN 'ذكر رجل رجال شاب ولد مذكر'
-        ELSE ''
-    END as gender_terms
+    d.normalized_name,
+    d.effective_date,
+    d.gender_terms,
+    d.search_vector
 FROM detainees d;
 
 -- Create indexes on the materialized view
-CREATE INDEX IF NOT EXISTS idx_mv_detainees_search_vector ON mv_detainees_search USING gin(search_vector);
-CREATE INDEX IF NOT EXISTS idx_mv_detainees_full_name ON mv_detainees_search USING btree(full_name);
-
--- Grant permissions
-GRANT ALL PRIVILEGES ON TABLE mv_detainees_search TO service_role;
-GRANT ALL PRIVILEGES ON TABLE detainees TO service_role;
-GRANT SELECT ON mv_detainees_search TO authenticated;
-GRANT SELECT ON TABLE detainees TO authenticated;
-
--- Create a function to manually refresh the view
-CREATE OR REPLACE FUNCTION refresh_mv_detainees_search()
-RETURNS void AS $$
-BEGIN
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_detainees_search;
-END;
-$$ LANGUAGE plpgsql;
-
--- Grant execute permission on the refresh function
-GRANT EXECUTE ON FUNCTION refresh_mv_detainees_search() TO service_role;
-
--- Drop and recreate the normalize_detainee_fields function
-DROP FUNCTION IF EXISTS normalize_detainee_fields() CASCADE;
-
-CREATE OR REPLACE FUNCTION normalize_detainee_fields()
-RETURNS trigger AS $$
-BEGIN
-    -- Only normalize text fields that exist and are not null
-    IF NEW.full_name IS NOT NULL THEN
-        NEW.full_name = normalize_arabic_text(NEW.full_name);
-    END IF;
-    
-    IF NEW.last_seen_location IS NOT NULL THEN
-        NEW.last_seen_location = normalize_arabic_text(NEW.last_seen_location);
-    END IF;
-    
-    IF NEW.detention_facility IS NOT NULL THEN
-        NEW.detention_facility = normalize_arabic_text(NEW.detention_facility);
-    END IF;
-    
-    IF NEW.physical_description IS NOT NULL THEN
-        NEW.physical_description = normalize_arabic_text(NEW.physical_description);
-    END IF;
-    
-    IF NEW.additional_notes IS NOT NULL THEN
-        NEW.additional_notes = normalize_arabic_text(NEW.additional_notes);
-    END IF;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Recreate the trigger
-DROP TRIGGER IF EXISTS normalize_detainee_fields_trigger ON detainees;
-CREATE TRIGGER normalize_detainee_fields_trigger
-    BEFORE INSERT OR UPDATE ON detainees
-    FOR EACH ROW
-    EXECUTE FUNCTION normalize_detainee_fields();
-
--- Drop and recreate the search vector update function
-DROP FUNCTION IF EXISTS update_detainee_search_vector() CASCADE;
-
-CREATE OR REPLACE FUNCTION update_detainee_search_vector()
-RETURNS trigger AS $$
-BEGIN
-    NEW.search_vector = 
-        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(NEW.full_name), '')), 'A') ||
-        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(NEW.last_seen_location), '')), 'B') ||
-        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(NEW.detention_facility), '')), 'B') ||
-        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(NEW.physical_description), '')), 'C') ||
-        setweight(to_tsvector('arabic', COALESCE(normalize_arabic_text(NEW.additional_notes), '')), 'D');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Recreate the trigger
-CREATE TRIGGER trig_update_search_vector
-    BEFORE INSERT OR UPDATE ON detainees
-    FOR EACH ROW
-    EXECUTE FUNCTION update_detainee_search_vector();
+CREATE INDEX idx_mv_search_normalized_name ON mv_detainees_search (normalized_name);
+CREATE INDEX idx_mv_search_vector ON mv_detainees_search USING gin(search_vector);
+CREATE INDEX idx_mv_search_effective_date ON mv_detainees_search (effective_date);
 
 -- Create the enhanced search function
 CREATE OR REPLACE FUNCTION public.search_detainees_enhanced(search_params JSONB)
@@ -219,6 +160,20 @@ DECLARE
 BEGIN
     -- Extract parameters with defaults
     query_text := search_params->>'query';
+    
+    -- Return empty result if query doesn't contain Arabic
+    IF NOT contains_arabic(query_text) THEN
+        RETURN jsonb_build_object(
+            'results', '[]'::jsonb,
+            'totalCount', 0,
+            'pageSize', COALESCE((search_params->>'page_size')::INT, 20),
+            'currentPage', COALESCE((search_params->>'page_number')::INT, 1),
+            'totalPages', 0,
+            'hasNextPage', false,
+            'hasPreviousPage', false
+        );
+    END IF;
+
     page_size := COALESCE((search_params->>'page_size')::INT, 20);
     page_number := COALESCE((search_params->>'page_number')::INT, 1);
     sort_ascending := COALESCE((search_params->>'sort_ascending')::BOOLEAN, false);
@@ -241,6 +196,8 @@ BEGIN
             d.full_name ~* ('\m' || normalized_query || '\M')
             -- Surname pattern
             OR d.full_name ~* ('\mال' || normalized_query || '\M$')
+            -- First name match
+            OR d.full_name ~* ('^' || normalized_query || '\M')
             -- Middle name with ال prefix
             OR d.full_name ~* ('\mال' || normalized_query || '\M')
             -- Start of word match for compound names
@@ -289,7 +246,7 @@ BEGIN
                     WHEN normalize_arabic_text(d.gender_terms) ~* ('\m' || normalized_query || '\M') THEN 0.3
                     ELSE 0.0
                 END
-            ) as rank
+            ) as search_rank
         FROM mv_detainees_search d
         WHERE
             -- Exact full name match
@@ -302,7 +259,7 @@ BEGIN
             OR d.full_name ~* ('\m' || normalized_query || '\M')
             -- Name with ال prefix at end
             OR d.full_name ~* ('\mال' || normalized_query || '\M$')
-            -- Middle name with ال prefix
+            -- Name with ال prefix in middle
             OR d.full_name ~* ('\mال' || normalized_query || '\M')
             -- Start of word match for compound names
             OR d.full_name ~* ('\m' || normalized_query)
@@ -312,90 +269,58 @@ BEGIN
             OR normalize_arabic_text(d.gender_terms) ~* ('\m' || normalized_query || '\M')
             -- Full-text search fallback
             OR search_vector @@ to_tsquery('arabic', normalized_query)
-    ),
-    paginated_results AS (
-        SELECT *
-        FROM ranked_results
         ORDER BY 
-            CASE WHEN sort_ascending THEN rank ELSE -rank END,
-            CASE WHEN sort_ascending THEN id::text ELSE id::text END DESC
+            search_rank DESC,
+            CASE WHEN sort_ascending THEN d.effective_date END ASC,
+            CASE WHEN NOT sort_ascending THEN d.effective_date END DESC
         LIMIT page_size
         OFFSET (page_number - 1) * page_size
     )
     SELECT 
         jsonb_build_object(
-            'results', COALESCE(
-                jsonb_agg(
-                    jsonb_build_object(
-                        'id', pr.id,
-                        'gender', pr.gender,
-                        'status', pr.status,
-                        'full_name', pr.full_name,
-                        'created_at', pr.created_at,
-                        'search_rank', pr.rank,
-                        'contact_info', pr.contact_info,
-                        'additional_notes', pr.additional_notes,
-                        'age_at_detention', pr.age_at_detention,
-                        'last_update_date', pr.last_update_date,
-                        'date_of_detention', pr.date_of_detention,
-                        'detention_facility', pr.detention_facility,
-                        'last_seen_location', pr.last_seen_location,
-                        'source_organization', pr.source_organization,
-                        'physical_description', pr.physical_description
-                    )
-                    ORDER BY 
-                        CASE WHEN sort_ascending THEN pr.rank ELSE -pr.rank END,
-                        CASE WHEN sort_ascending THEN pr.id::text ELSE pr.id::text END DESC
-                ), '[]'::jsonb
-            ),
+            'results', COALESCE(jsonb_agg(
+                jsonb_build_object(
+                    'id', r.id,
+                    'full_name', r.full_name,
+                    'original_name', r.original_name,
+                    'date_of_detention', r.date_of_detention,
+                    'last_seen_location', r.last_seen_location,
+                    'detention_facility', r.detention_facility,
+                    'physical_description', r.physical_description,
+                    'age_at_detention', r.age_at_detention,
+                    'gender', r.gender,
+                    'status', r.status,
+                    'contact_info', r.contact_info,
+                    'additional_notes', r.additional_notes,
+                    'created_at', r.created_at,
+                    'last_update_date', r.last_update_date,
+                    'source_organization', r.source_organization,
+                    'search_rank', r.search_rank
+                )
+            ), '[]'::jsonb),
             'totalCount', COALESCE(total_count, 0),
+            'pageSize', page_size,
             'currentPage', page_number,
             'totalPages', CASE 
-                WHEN total_count IS NOT NULL 
-                THEN CEIL(total_count::float / page_size)
-                ELSE NULL 
+                WHEN total_count IS NULL THEN 0
+                ELSE CEIL(total_count::float / page_size)
             END,
             'hasNextPage', CASE 
-                WHEN total_count IS NOT NULL 
-                THEN total_count > (page_number * page_size)
-                ELSE NULL 
+                WHEN total_count IS NULL THEN false
+                ELSE (page_number * page_size) < total_count
             END,
-            'hasPreviousPage', page_number > 1,
-            'pageSize', page_size
+            'hasPreviousPage', page_number > 1
         ) INTO search_results
-    FROM paginated_results pr;
+    FROM ranked_results r;
 
     RETURN search_results;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Grant permissions
-GRANT SELECT ON mv_detainees_search TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION search_detainees_enhanced(jsonb) TO anon, authenticated;
-
--- Grant permissions to service role
-GRANT ALL PRIVILEGES ON TABLE mv_detainees_search TO service_role;
-GRANT ALL PRIVILEGES ON TABLE detainees TO service_role;
-GRANT EXECUTE ON FUNCTION refresh_mv_detainees_search() TO service_role;
-GRANT EXECUTE ON FUNCTION normalize_arabic_text(text) TO service_role;
-GRANT EXECUTE ON FUNCTION update_detainee_search_vector() TO service_role;
-GRANT EXECUTE ON FUNCTION normalize_detainee_fields() TO service_role;
-
--- Grant permissions to authenticated users
-GRANT SELECT ON TABLE mv_detainees_search TO authenticated;
-GRANT SELECT ON TABLE detainees TO authenticated;
-GRANT EXECUTE ON FUNCTION search_detainees_enhanced(jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION normalize_arabic_text(text) TO authenticated;
-
--- Test the search function
-SELECT jsonb_pretty(
-    search_detainees_enhanced(
-        jsonb_build_object(
-            'query', 'علي',
-            'page_size', 10,
-            'page_number', 1,
-            'estimate_total', true,
-            'sort_ascending', false
-        )
-    )
-);
+-- Grant necessary permissions
+GRANT EXECUTE ON FUNCTION public.normalize_arabic_text TO anon;
+GRANT EXECUTE ON FUNCTION public.contains_arabic TO anon;
+GRANT EXECUTE ON FUNCTION public.normalize_name TO anon;
+GRANT EXECUTE ON FUNCTION public.get_effective_date TO anon;
+GRANT EXECUTE ON FUNCTION public.search_detainees_enhanced TO anon;
+GRANT SELECT ON mv_detainees_search TO anon;

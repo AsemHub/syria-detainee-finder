@@ -1,6 +1,9 @@
-import fetch from 'node-fetch'
+import fetch from 'cross-fetch'
 
-export const customFetch = async (url: string, options: RequestInit = {}) => {
+export const customFetch = async (
+  url: string,
+  options: globalThis.RequestInit = {}
+) => {
   const timeout = 30000 // 30 seconds
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)

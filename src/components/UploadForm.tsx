@@ -32,38 +32,60 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>
 
-type UploadStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed'
+type UploadStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 
 type UploadError = {
-  record: string
-  error: string
-  details?: string
+  record: string;
+  error: string;
+  type: string;
+}
+
+type ProcessingDetails = {
+  current_name?: string;
+  current_index?: number;
+  total?: number;
+}
+
+type UploadSession = {
+  id: string;
+  status: Exclude<UploadStatus, 'idle'>;
+  total_records: number;
+  processed_records: number;
+  valid_records: number;
+  invalid_records: number;
+  duplicate_records: number;
+  skipped_duplicates: number;
+  errors: UploadError[];
+  error_message?: string;
+  processing_details: ProcessingDetails;
+  current_record?: string;
 }
 
 type UploadResponse = {
-  sessionId: string
-  totalRecords: number
-  processedRecords: number
-  validRecords: number
-  invalidRecords: number
-  duplicateRecords: number
-  errors: UploadError[]
+  sessionId: string;
+  totalRecords: number;
+  processedRecords: number;
+  validRecords: number;
+  invalidRecords: number;
+  duplicateRecords: number;
+  skippedDuplicates: number;
+  errors: UploadError[];
 }
 
 type ProcessingStats = {
-  total: number
-  processed: number
-  duplicates: number
-  invalid_dates: number
+  total: number;
+  processed: number;
+  duplicates: number;
+  invalid_dates: number;
   missing_required: {
-    full_name: number
-    last_seen_location: number
-    contact_info: number
+    full_name: number;
+    last_seen_location: number;
+    contact_info: number;
   }
   invalid_data: {
-    age: number
-    gender: number
-    status: number
+    age: number;
+    gender: number;
+    status: number;
   }
 }
 
@@ -98,6 +120,43 @@ const formatGuide = {
   organization: "المنظمة المقدمة للمعلومات"
 }
 
+const getErrorTypeTitle = (type: string) => {
+  switch (type) {
+    case 'duplicate':
+      return 'سجلات مكررة';
+    case 'invalid_date':
+      return 'تواريخ غير صالحة';
+    case 'missing_required':
+      return 'حقول مطلوبة مفقودة';
+    case 'invalid_data':
+      return 'بيانات غير صالحة';
+    default:
+      return 'أخطاء أخرى';
+  }
+};
+
+const getErrorMessage = (error: UploadError) => {
+  switch (error.type) {
+    case 'duplicate':
+      return 'هذا السجل مكرر في قاعدة البيانات';
+    case 'invalid_date':
+      return 'تاريخ غير صالح - يجب أن يكون بتنسيق YYYY-MM-DD';
+    case 'missing_required':
+      return 'حقول مطلوبة مفقودة';
+    case 'invalid_data':
+      if (error.error.includes('age')) {
+        return 'العمر يجب أن يكون رقماً صحيحاً';
+      } else if (error.error.includes('gender')) {
+        return 'الجنس يجب أن يكون أحد الخيارات: ذكر/أنثى/غير محدد';
+      } else if (error.error.includes('status')) {
+        return 'الحالة يجب أن تكون أحد الخيارات: معتقل/مفقود/محرر/متوفى/غير معروف';
+      }
+      return error.error;
+    default:
+      return error.error;
+  }
+};
+
 export function UploadForm() {
   const [status, setStatus] = useState<UploadStatus>('idle')
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -114,77 +173,112 @@ export function UploadForm() {
   const [hasFile, setHasFile] = useState(false)
   const [currentRecord, setCurrentRecord] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [showErrors, setShowErrors] = useState(false)
+  const [fileKey, setFileKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Use the client-side Supabase instance
   const supabase = supabaseClient
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) return;
 
-    // Subscribe to changes in the upload_sessions table
-    const channel = supabase
-      .channel(`upload_progress_${sessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'upload_sessions',
-          filter: `id=eq.${sessionId}`
-        },
-        (payload) => {
-          const data = payload.new
+    const setupSubscription = () => {
+      console.log('Setting up real-time subscription for session:', sessionId);
 
-          // Update stats
-          setStats({
-            total: data.total_records,
-            valid: data.valid_records,
-            invalid: data.invalid_records,
-            duplicates: data.duplicate_records + data.skipped_duplicates // Count both types of duplicates
-          })
+      const channel = supabase
+        .channel(`upload_session_${sessionId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'upload_sessions',
+            filter: `id=eq.${sessionId}`
+          },
+          (payload) => {
+            const data = payload.new as UploadSession;
+            console.log('Session update:', data);
 
-          // Update current record if available
-          if (data.current_record) {
-            setCurrentRecord(data.current_record)
+            // Update stats
+            setStats({
+              total: data.total_records || 0,
+              valid: data.valid_records || 0,
+              invalid: data.invalid_records || 0,
+              duplicates: data.duplicate_records || 0
+            });
+
+            // Update current record if available
+            if (data.current_record) {
+              setCurrentRecord(data.current_record);
+            }
+
+            // Update progress
+            if (data.total_records && data.processed_records) {
+              const progress = Math.round((data.processed_records / data.total_records) * 100);
+              setProcessingProgress(progress);
+            }
+
+            // Update errors array from session
+            if (data.errors && Array.isArray(data.errors)) {
+              setErrors(data.errors.map(error => ({
+                record: error.record || '',
+                error: error.error || 'Unknown error',
+                type: error.type || 'other'
+              })));
+            }
+
+            // Update status based on session state
+            if (data.status === 'completed') {
+              console.log('Upload completed');
+              setStatus('completed');
+              setIsUploading(false);
+            } else if (data.status === 'failed') {
+              console.log('Upload failed:', data.error_message);
+              setStatus('failed');
+              setIsUploading(false);
+              if (data.error_message) {
+                setErrors(prev => {
+                  const newError = {
+                    record: '',
+                    error: data.error_message || 'Unknown error',
+                    type: 'error'
+                  };
+                  return prev.some(e => e.error === newError.error) ? prev : [...prev, newError];
+                });
+              }
+            } else if (data.status === 'processing') {
+              setStatus('processing');
+            }
           }
+        )
+        .subscribe((status) => {
+          console.log('Subscription status:', status);
 
-          // Update processing progress
-          const progress = (data.processed_records / data.total_records) * 100
-          setProcessingProgress(Math.round(progress))
-
-          // Update processing details
-          if (data.processing_details) {
-            setStatsDetails({
-              total: data.total_records,
-              processed: data.processed_records,
-              duplicates: data.skipped_duplicates,
-              invalid_dates: data.processing_details.invalid_dates,
-              missing_required: data.processing_details.missing_required,
-              invalid_data: data.processing_details.invalid_data
-            })
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to changes');
+          } else if (status === 'CLOSED') {
+            console.log('Subscription closed');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Channel error');
           }
+        });
 
-          // Update errors if any
-          if (data.errors && data.errors.length > 0) {
-            setErrors(data.errors)
-          }
+      return () => {
+        console.log('Cleaning up subscription');
+        supabase.removeChannel(channel);
+      };
+    };
 
-          // Check completion status
-          if (data.status === 'completed') {
-            setStatus('completed')
-          } else if (data.status === 'failed') {
-            setStatus('failed')
-          }
-        }
-      )
-      .subscribe()
+    const cleanup = setupSubscription();
 
     // Cleanup subscription on unmount or when sessionId changes
     return () => {
-      channel.unsubscribe()
-    }
-  }, [sessionId])
+      console.log('Running cleanup');
+      cleanup();
+    };
+  }, [sessionId]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -196,82 +290,170 @@ export function UploadForm() {
 
   const handleSubmit = async (data: FormData) => {
     try {
-      setStatus('uploading')
-      setErrors([])
-      
-      // Parse the CSV first to get total count
-      const file = data.file
-      const text = await file.text()
-      const result = Papa.parse(text, { header: true })
-      const totalCount = result.data.length
-      
-      // Initialize the statistics immediately
+      setIsUploading(true);
+      setStatus('pending');
+      setErrors([]);
       setStats({
-        total: totalCount,
+        total: 0,
         valid: 0,
         invalid: 0,
         duplicates: 0
-      })
+      });
+      setProcessingProgress(0);
+      setCurrentRecord(null);
 
-      // Prepare form data for upload
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('organization', data.organization)
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('organization', data.organization);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData,
-      })
+        body: formData
+      });
+
+      const responseData = await response.json();
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
+        throw new Error(responseData.error || 'Upload failed');
       }
 
-      const { sessionId } = await response.json()
+      // Set the session ID to enable real-time updates
+      setSessionId(responseData.sessionId);
+      setStatus('processing');
 
-      // Set session ID and switch to processing state
-      setSessionId(sessionId)
-      setStatus('processing')
-      
+      // Subscribe to session updates
+      const subscription = supabase
+        .channel('upload_session_' + responseData.sessionId)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'upload_sessions',
+            filter: `id=eq.${responseData.sessionId}`
+          },
+          (payload) => {
+            console.log('Session update:', payload.new);
+            const session = payload.new as UploadSession;
+
+            // Update UI based on session status
+            if (session.status === 'completed') {
+              setStatus('completed');
+              setIsUploading(false);
+              setStats({
+                total: session.total_records,
+                valid: session.valid_records,
+                invalid: session.invalid_records,
+                duplicates: session.duplicate_records
+              });
+              subscription.unsubscribe();
+            } else if (session.status === 'failed') {
+              setStatus('failed');
+              setIsUploading(false);
+              setErrors(session.errors || [{
+                record: '',
+                error: session.error_message || 'Unknown error',
+                type: 'error'
+              }]);
+              subscription.unsubscribe();
+            } else if (session.status === 'processing' && session.processing_details) {
+              const { current_index = 0, total = 0 } = session.processing_details;
+              setProcessingProgress(total > 0 ? Math.round((current_index / total) * 100) : 0);
+              setCurrentRecord(session.processing_details.current_name || null);
+              setStats({
+                total: session.total_records,
+                valid: session.valid_records,
+                invalid: session.invalid_records,
+                duplicates: session.duplicate_records
+              });
+            }
+          }
+        )
+        .subscribe();
+
+      // Cleanup subscription on unmount
+      return () => {
+        subscription.unsubscribe();
+      };
+
     } catch (error) {
-      console.error('Upload error:', error)
-      setStatus('failed')
+      console.error('Upload error:', error);
+      setStatus('failed');
       setErrors([{ 
-        record: 'System Error', 
-        error: error instanceof Error ? error.message : 'Upload failed',
-        details: 'Failed to process the upload'
-      }])
+        record: '', 
+        error: error instanceof Error ? error.message : 'Upload failed', 
+        type: 'error' 
+      }]);
+      setIsUploading(false);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, onChange: (value: any) => void) => {
-    const file = e.target.files?.[0]
+    const file = e.target.files?.[0];
     if (file) {
-      onChange(file)
-      setHasFile(true)
+      // Create a new File object with text/csv MIME type
+      const csvFile = new File([file], file.name, { type: 'text/csv' });
+      onChange(csvFile);
+      setHasFile(true);
+    } else {
+      setHasFile(false);
     }
   }
 
   const resetForm = useCallback(() => {
-    setStatus('idle')
-    setUploadProgress(0)
-    setProcessingProgress(0)
+    setStatus('idle');
+    setUploadProgress(0);
+    setProcessingProgress(0);
     setStats({
       total: 0,
       valid: 0,
       invalid: 0,
       duplicates: 0
-    })
-    setStatsDetails(initialStats)
-    setErrors([])
-    setHasFile(false)
-    setCurrentRecord(null)
-    form.reset()
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }, [form])
+    });
+    setStatsDetails(initialStats);
+    setErrors([]);
+    setHasFile(false);
+    setCurrentRecord(null);
+    setSessionId(null);
+    setIsUploading(false);
+    setShowErrors(false);
+    form.reset();
+    setFileKey(prev => prev + 1);
+  }, [form]);
+
+  const downloadErrorsReport = () => {
+    // Create CSV content with UTF-8 BOM and proper encoding
+    const BOM = '\ufeff';
+    const rows = [
+      ['السجل', 'نوع الخطأ', 'تفاصيل الخطأ'],
+      ...errors.map(error => [
+        error.record || '',
+        getErrorTypeTitle(error.type || 'other'),
+        getErrorMessage(error)
+      ])
+    ];
+
+    // Convert rows to CSV with proper escaping
+    const csvContent = BOM + rows.map(row => 
+      row.map(cell => 
+        `"${(cell || '').replace(/"/g, '""')}"`
+      ).join(',')
+    ).join('\n');
+
+    // Create blob with explicit UTF-8 encoding
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8-sig' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `errors_report_${new Date().toISOString().slice(0, 19).replace(/:/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const errorCount = errors.length;
+  const showErrorActions = errorCount > 0 || stats.invalid > 0 || stats.duplicates > 0;
 
   return (
     <div className="space-y-8">
@@ -287,23 +469,23 @@ export function UploadForm() {
 
       {showFormatGuide && (
         <div className="bg-muted p-4 rounded-lg space-y-4">
-          <h3 className="font-semibold">حقول الملف المطلوبة</h3>
-          <div className="grid gap-2">
-            <div className="text-sm font-mono bg-background p-2 rounded overflow-x-auto whitespace-nowrap">
-              {Object.keys(formatGuide).join(',')}
-            </div>
-            <div className="space-y-2">
-              {Object.entries(formatGuide).map(([key, description]) => (
-                <div key={key} className="text-sm">
-                  <span className="font-semibold text-primary">{key}:</span> {description}
-                </div>
-              ))}
-            </div>
+        <h3 className="font-semibold">حقول الملف المطلوبة</h3>
+        <div className="grid gap-2">
+          <div className="text-sm font-mono bg-background p-2 rounded overflow-x-auto whitespace-nowrap">
+            {Object.keys(formatGuide).join(',')}
           </div>
-          <div className="text-sm text-muted-foreground mt-2">
-            ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/test_comprehensive_detainees_v2.csv')}>ملف CSV العينة</Button> للرجوع إليه.
+          <div className="space-y-2">
+            {Object.entries(formatGuide).map(([key, description]) => (
+              <div key={key} className="text-sm">
+                <span className="font-semibold text-primary">{key}:</span> {description}
+              </div>
+            ))}
           </div>
         </div>
+        <div className="text-sm text-muted-foreground mt-2">
+          ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/test_comprehensive_detainees_v2.csv')}>ملف CSV العينة</Button> للرجوع إليه.
+        </div>
+      </div>
       )}
 
       <div className="bg-accent/10 border-l-4 border-accent p-4 mb-4 rounded-sm">
@@ -322,12 +504,12 @@ export function UploadForm() {
             name="organization"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>اسم المنظمة*</FormLabel>
+                <FormLabel>اسم المنظمة</FormLabel>
                 <FormControl>
                   <Input placeholder="أدخل اسم المنظمة" {...field} />
                 </FormControl>
                 <FormDescription>
-                  المنظمة أو الجهة التي تقدم هذه البيانات
+                  اسم المنظمة التي تقدم المعلومات
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -337,30 +519,26 @@ export function UploadForm() {
           <FormField
             control={form.control}
             name="file"
-            render={({ field: { onChange, ...field } }) => (
+            render={({ field: { onChange, value, ...field } }) => (
               <FormItem>
-                <FormLabel>ملف CSV*</FormLabel>
+                <FormLabel>ملف CSV</FormLabel>
                 <FormControl>
-                  <Input
-                    type="file"
-                    accept="text/csv,.csv"
-                    ref={fileInputRef}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        // Create a new File object with the correct MIME type
-                        const csvFile = new File(
-                          [file],
-                          file.name,
-                          { type: 'text/csv' }
-                        )
-                        onChange(csvFile)
-                        setHasFile(true)
-                      }
-                    }}
-                    className="rtl"
-                  />
+                  <div className="relative">
+                    <Input
+                      key={fileKey}
+                      type="file"
+                      accept=".csv"
+                      ref={fileInputRef}
+                      onChange={(e) => handleFileChange(e, onChange)}
+                      className="cursor-pointer"
+                      name={field.name}
+                      onBlur={field.onBlur}
+                    />
+                  </div>
                 </FormControl>
+                <FormDescription>
+                  اختر ملف CSV يحتوي على معلومات المعتقلين
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -368,13 +546,13 @@ export function UploadForm() {
 
           <Button 
             type="submit" 
-            disabled={!hasFile || status === 'uploading' || status === 'processing'}
+            disabled={!hasFile || status === 'pending' || status === 'processing' || isUploading}
             className="w-full"
           >
-            {status === 'uploading' ? (
+            {status === 'pending' ? (
               <div className="flex items-center justify-center">
                 <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                <span>جاري الرفع...</span>
+                <span>جاري رفع الملف...</span>
               </div>
             ) : status === 'processing' ? (
               <div className="flex items-center justify-center">
@@ -382,252 +560,191 @@ export function UploadForm() {
                 <span>جاري المعالجة...</span>
               </div>
             ) : (
-              "رفع الملف"
+              <span>رفع الملف</span>
             )}
           </Button>
         </form>
       </Form>
 
-      {/* Progress Section */}
-      {(status === 'uploading' || status === 'processing') && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between text-sm">
-            <span>
-              {status === 'uploading' ? 'جاري الرفع...' : 
-                currentRecord ? `جاري معالجة: ${currentRecord}` : 'جاري المعالجة...'}
-            </span>
-            <span>{processingProgress}%</span>
-          </div>
-          <Progress value={processingProgress} className="w-full" />
-        </div>
-      )}
-
-      {(status === 'processing' || status === 'completed') && (
-        <div className="space-y-6 mt-6">
-          {/* Upload statistics */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">إجمالي السجلات</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.total}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">السجلات الصالحة</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{stats.valid}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">السجلات غير الصالحة</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600">{stats.invalid}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">السجلات المكررة</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-yellow-600">{stats.duplicates}</div>
-                </CardContent>
-              </Card>
+      {/* Processing Status Section */}
+      {status === 'processing' && (
+        <div className="space-y-4 mt-4">
+          {/* Progress Information */}
+          <div className="bg-white p-6 rounded-lg border">
+            <div className="flex items-center mb-4">
+              <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+              <span className="font-semibold">
+                {currentRecord ? `جاري معالجة: ${currentRecord}` : 'جاري معالجة الملف...'}
+              </span>
             </div>
 
-            {/* Error breakdown */}
-            <div className="space-y-4">
-              {/* Summary statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {statsDetails.invalid_dates > 0 && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">تواريخ غير صالحة</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold text-red-600">{statsDetails.invalid_dates} سجل</div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {(statsDetails.missing_required.full_name > 0 || statsDetails.missing_required.last_seen_location > 0 || statsDetails.missing_required.contact_info > 0) && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">حقول مطلوبة مفقودة</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {statsDetails.missing_required.full_name > 0 && (
-                        <div className="flex justify-between">
-                          <span>الاسم</span>
-                          <span className="font-bold text-red-600">{statsDetails.missing_required.full_name}</span>
-                        </div>
-                      )}
-                      {statsDetails.missing_required.last_seen_location > 0 && (
-                        <div className="flex justify-between">
-                          <span>آخر مكان شوهد فيه</span>
-                          <span className="font-bold text-red-600">{statsDetails.missing_required.last_seen_location}</span>
-                        </div>
-                      )}
-                      {statsDetails.missing_required.contact_info > 0 && (
-                        <div className="flex justify-between">
-                          <span>معلومات الاتصال</span>
-                          <span className="font-bold text-red-600">{statsDetails.missing_required.contact_info}</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {(statsDetails.invalid_data.age > 0 || statsDetails.invalid_data.gender > 0 || statsDetails.invalid_data.status > 0) && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">بيانات غير صالحة</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {statsDetails.invalid_data.age > 0 && (
-                        <div className="flex justify-between">
-                          <span>العمر</span>
-                          <span className="font-bold text-red-600">{statsDetails.invalid_data.age}</span>
-                        </div>
-                      )}
-                      {statsDetails.invalid_data.gender > 0 && (
-                        <div className="flex justify-between">
-                          <span>الجنس</span>
-                          <span className="font-bold text-red-600">{statsDetails.invalid_data.gender}</span>
-                        </div>
-                      )}
-                      {statsDetails.invalid_data.status > 0 && (
-                        <div className="flex justify-between">
-                          <span>الحالة</span>
-                          <span className="font-bold text-red-600">{statsDetails.invalid_data.status}</span>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
+            {/* Progress Bar */}
+            <Progress value={processingProgress} className="mb-4" />
+            
+            {/* Live Statistics */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span>إجمالي السجلات:</span>
+                <span className="font-medium">{stats.total}</span>
               </div>
-
-              {/* Detailed errors grouped by type */}
-              {errors.length > 0 && (
-                <div className="space-y-4">
-                  {Object.entries(errors.reduce((acc, error) => {
-                    const type = error.error || 'other';
-                    if (!acc[type]) acc[type] = [];
-                    acc[type].push(error);
-                    return acc;
-                  }, {} as Record<string, typeof errors>)).map(([type, typeErrors]) => {
-                    const title = type === 'missing_required' ? 'حقول مفقودة' :
-                                 type === 'invalid_date' ? 'تواريخ غير صحيحة' :
-                                 type === 'invalid_data' ? 'بيانات غير صحيحة' :
-                                 type === 'duplicate' ? 'سجلات مكررة' : 'أخطاء أخرى';
-                    
-                    return (
-                      <div key={type} className="bg-background/50 p-4 rounded-lg border">
-                        <h4 className="font-semibold mb-3 text-foreground">{title}</h4>
-                        <div className="space-y-2">
-                          {typeErrors.map((error, index) => (
-                            <div key={index} className="bg-destructive/10 dark:bg-destructive/20 border border-destructive/20 dark:border-destructive/30 p-3 rounded-lg">
-                              <div className="font-semibold text-foreground">{error.record}</div>
-                              <div className="text-sm text-destructive dark:text-destructive/90">{error.error}</div>
-                              {error.details && <div className="text-xs text-destructive/90 dark:text-destructive/80 mt-1">{error.details}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(status === 'processing' || status === 'completed') && (
-        <div className="flex justify-end">
-          <Button
-            onClick={resetForm}
-            variant="secondary"
-            className="gap-2"
-          >
-            <XCircle className="h-4 w-4" />
-            تحميل ملف آخر
-          </Button>
-        </div>
-      )}
-
-      {(status === 'processing' || status === 'completed') && (
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold mb-2">إجمالي السجلات</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p>السجلات الصالحة</p>
-                  <span className="text-green-600">{stats.valid}</span>
-                </div>
-                <div>
-                  <p>السجلات المكررة</p>
-                  <span className="text-yellow-600">{stats.duplicates}</span>
-                </div>
-                <div>
-                  <p>السجلات غير الصالحة</p>
-                  <span className="text-red-600">{stats.invalid}</span>
-                </div>
+              <div className="flex justify-between items-center">
+                <span>السجلات الصالحة:</span>
+                <span className="font-medium text-success">{stats.valid}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>السجلات غير الصالحة:</span>
+                <span className="font-medium text-destructive">{stats.invalid}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>السجلات المكررة:</span>
+                <span className="font-medium text-warning">{stats.duplicates}</span>
               </div>
             </div>
-            {(stats.invalid > 0 || stats.duplicates > 0) && (
-              <Button
-                variant="outline"
-                className="flex items-center gap-2"
-                onClick={() => {
-                  window.location.href = `/api/download-report?sessionId=${sessionId}`
-                }}
-              >
-                <Download className="h-4 w-4" />
-                تحميل تقرير الأخطاء
-              </Button>
+
+            {/* Live Error Details */}
+            {(stats.invalid > 0 || stats.duplicates > 0 || errors.length > 0) && (
+              <div className="flex gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowErrors(!showErrors)}
+                >
+                  {showErrors ? "إخفاء تفاصيل الأخطاء" : `عرض تفاصيل الأخطاء (${errorCount})`}
+                </Button>
+                {errorCount > 0 && (
+                  <Button
+                    variant="outline"
+                    className="flex items-center gap-2"
+                    onClick={downloadErrorsReport}
+                  >
+                    <Download className="h-4 w-4" />
+                    تحميل تقرير الأخطاء
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {showErrors && errorCount > 0 && (
+              <div className="mt-4 space-y-4 bg-muted/50 p-4 rounded-lg">
+                {Object.entries(
+                  errors.reduce((groups, error) => {
+                    const type = error.type || 'other';
+                    if (!groups[type]) groups[type] = [];
+                    groups[type].push(error);
+                    return groups;
+                  }, {} as Record<string, UploadError[]>)
+                ).map(([type, typeErrors]) => (
+                  <div key={type} className="space-y-2">
+                    <h4 className="font-medium">{getErrorTypeTitle(type)}</h4>
+                    <ul className="space-y-1">
+                      {typeErrors.map((error, index) => (
+                        <li key={index} className="text-sm text-muted-foreground flex items-start">
+                          <AlertCircle className="ml-2 h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+                          <div>
+                            {error.record && <span className="font-medium">{error.record} - </span>}
+                            <span>{getErrorMessage(error)}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {status === 'failed' && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>فشل التحميل</AlertTitle>
-          <AlertDescription>
-            حدث خطأ أثناء تحميل الملف. يرجى المحاولة مرة أخرى.
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {/* Display current record being processed */}
-      {status === 'processing' && currentRecord && (
-        <div className="text-sm text-gray-600 mt-2">
-          <p className="font-semibold">جاري معالجة: {currentRecord}</p>
-        </div>
-      )}
-      
-      {/* Display errors in a scrollable list */}
-      {errors.length > 0 && (
-        <div className="mt-4 p-4 bg-destructive/10 dark:bg-destructive/20 border border-destructive/20 dark:border-destructive/30 rounded-lg max-h-60 overflow-y-auto">
-          <h3 className="text-destructive font-semibold mb-2">أخطاء التحقق</h3>
-          <ul className="space-y-2">
-            {errors.map((error, index) => (
-              <li key={index} className="text-sm">
-                <span className="font-medium text-foreground">{error.record || 'Unknown Record'}: </span>
-                <span className="text-destructive dark:text-destructive/90">{error.error}</span>
-                {error.details && <p className="text-xs text-destructive/90 dark:text-destructive/80 mt-1">{error.details}</p>}
-              </li>
-            ))}
-          </ul>
+      {/* Completed Status Section */}
+      {status === 'completed' && (
+        <div className="bg-white p-6 rounded-lg border mt-4">
+          <div className="flex items-center text-success mb-4">
+            <CheckCircle2 className="ml-2 h-5 w-5" />
+            <span className="font-semibold">تم رفع الملف بنجاح</span>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="flex justify-between items-center">
+              <span>اجمالي السجلات:</span>
+              <span className="font-medium">{stats.total}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>السجلات الصالحة:</span>
+              <span className="font-medium text-success">{stats.valid}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>السجلات غير الصالحة:</span>
+              <span className="font-medium text-destructive">{stats.invalid}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span>السجلات المكررة:</span>
+              <span className="font-medium text-warning">{stats.duplicates}</span>
+            </div>
+          </div>
+
+          {showErrorActions && (
+            <div className="flex gap-2 mt-4">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowErrors(!showErrors)}
+              >
+                {showErrors ? "إخفاء تفاصيل الأخطاء" : `عرض تفاصيل الأخطاء (${errorCount})`}
+              </Button>
+              {errorCount > 0 && (
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={downloadErrorsReport}
+                >
+                  <Download className="h-4 w-4" />
+                  تحميل تقرير الأخطاء
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Error Details */}
+          {showErrors && errorCount > 0 && (
+            <div className="mt-4 space-y-4 bg-muted/50 p-4 rounded-lg">
+              {Object.entries(
+                errors.reduce((groups, error) => {
+                  const type = error.type || 'other';
+                  if (!groups[type]) groups[type] = [];
+                  groups[type].push(error);
+                  return groups;
+                }, {} as Record<string, UploadError[]>)
+              ).map(([type, typeErrors]) => (
+                <div key={type} className="space-y-2">
+                  <h4 className="font-medium">{getErrorTypeTitle(type)}</h4>
+                  <ul className="space-y-1">
+                    {typeErrors.map((error, index) => (
+                      <li key={index} className="text-sm text-muted-foreground flex items-start">
+                        <AlertCircle className="ml-2 h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+                        <div>
+                          {error.record && <span className="font-medium">{error.record} - </span>}
+                          <span>{getErrorMessage(error)}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-center mt-4">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                resetForm();
+                setFileKey(prev => prev + 1);
+              }}
+            >
+              رفع ملف آخر
+            </Button>
+          </div>
         </div>
       )}
     </div>

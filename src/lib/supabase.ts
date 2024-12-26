@@ -10,10 +10,24 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY');
 }
 
-export const supabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+export const createSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+  return createClient<Database>(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  })
+}
+
+export const supabase = createSupabaseClient()
 
 export type { DetaineeStatus, DetaineeGender } from './database.types';
 
@@ -124,10 +138,10 @@ export async function performSearch(params: SearchParams): Promise<{ data: Detai
                 gender: d.gender,
                 age_at_detention: d.age_at_detention,
                 date_of_detention: d.date_of_detention,
-                notes: d.notes,
+                notes: d.additional_notes,
                 detention_facility: d.detention_facility,
                 physical_description: d.physical_description,
-                search_rank: d.search_rank
+                search_rank: (d as any).search_rank
             })) || null,
             error: null
         };

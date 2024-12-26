@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 import fetch from 'cross-fetch';
-import type { SearchParams } from './supabase';
 import { normalizeArabicText, areArabicStringsSimilar } from './arabic-utils';
 
 // Validate environment variables
@@ -18,6 +17,10 @@ if (!supabaseServiceKey) {
 
 // Create a Supabase client for server-side operations
 export const createServerSupabaseClient = () => {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing required environment variables for Supabase server client');
+  }
+  
   return createClient<Database>(
     supabaseUrl,
     supabaseServiceKey,
@@ -25,6 +28,9 @@ export const createServerSupabaseClient = () => {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
+      },
+      db: {
+        schema: 'public'
       },
       global: {
         fetch: fetch
@@ -55,12 +61,12 @@ interface SearchResult {
 
 interface SearchResponse {
   results: SearchResult[];
-  totalCount: number | null;
-  currentPage: number | null;
-  totalPages: number | null;
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
-  pageSize: number | null;
+  pageSize: number;
 }
 
 // Enhanced cache configuration
@@ -153,33 +159,62 @@ export async function performSearch({
         query: normalizedSearchText,
         page_size: pageSize,
         page_number: pageNumber,
-        estimate_total: estimateTotal
+        estimate_total: estimateTotal,
+        sort_ascending: false
       }
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Database error:', error);
+      throw error;
+    }
 
-    const response = data as any;
-    console.log('Database response:', {
-      totalCount: response.totalCount,
-      currentPage: response.currentPage,
-      totalPages: response.totalPages,
-      hasNextPage: response.hasNextPage,
-      hasPreviousPage: response.hasPreviousPage,
-      resultCount: response.results?.length
-    });
+    if (!data) {
+      console.warn('No data returned from search');
+      return {
+        results: [],
+        totalCount: 0,
+        currentPage: pageNumber,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        pageSize: pageSize
+      };
+    }
+
+    // Log the raw response for debugging
+    console.log('Raw database response:', data);
+
+    // Parse and type the response - matching exact property names from PostgreSQL
+    type SearchResponseData = {
+      results: SearchResult[];
+      pageSize: number;
+      totalCount: number;
+      totalPages: number;
+      currentPage: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+
+    // First cast to unknown, then to our expected type
+    const response = (data as unknown) as SearchResponseData;
     
     return {
       results: response.results || [],
       totalCount: response.totalCount || 0,
-      currentPage: response.currentPage || 1,
+      currentPage: response.currentPage || pageNumber,
       totalPages: response.totalPages || 1,
       hasNextPage: response.hasNextPage || false,
       hasPreviousPage: response.hasPreviousPage || false,
       pageSize: response.pageSize || pageSize
     };
   } catch (error: any) {
-    console.error('Search failed:', error);
-    throw new Error('Failed to perform search', { cause: error });
+    console.error('Search failed:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
+    });
+    throw new Error('Failed to perform search', { cause: error.message || error });
   }
 }

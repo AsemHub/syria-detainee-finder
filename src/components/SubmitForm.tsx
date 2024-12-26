@@ -47,9 +47,7 @@ const formSchema = z.object({
   full_name: z.string()
     .min(2, { message: "الاسم قصير جداً" })
     .max(50, { message: "الاسم طويل جداً" }),
-  date_of_detention: z.coerce.date()
-    .min(new Date(1900, 0, 1), { message: "التاريخ يجب أن يكون بعد 1900" })
-    .max(new Date(), { message: "التاريخ يجب أن يكون في الماضي" }),
+  date_of_detention: z.date().nullable(),
   last_seen_location: z.string()
     .min(2, "يجب أن يكون الموقع مكونًا من حرفين على الأقل")
     .max(200, "يجب أن يكون الموقع أقل من 200 حرف"),
@@ -94,7 +92,7 @@ export function SubmitForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       full_name: "",
-      date_of_detention: "",
+      date_of_detention: null,
       last_seen_location: "",
       detention_facility: "",
       physical_description: "",
@@ -109,7 +107,7 @@ export function SubmitForm() {
   const resetForm = () => {
     form.reset({
       full_name: "",
-      date_of_detention: "",
+      date_of_detention: null,
       last_seen_location: "",
       detention_facility: "",
       physical_description: "",
@@ -193,9 +191,6 @@ export function SubmitForm() {
       toast({
         title: "Success",
         description: <div data-testid="submit-status">{data.message || "Detainee information has been submitted successfully."}</div>,
-        data: {
-          "data-testid": "submit-status"
-        }
       })
       resetForm()
     } catch (error) {
@@ -203,9 +198,6 @@ export function SubmitForm() {
         title: "Error",
         description: <div data-testid="submit-status">{error instanceof Error ? error.message : "Failed to submit detainee information. Please try again."}</div>,
         variant: "destructive",
-        data: {
-          "data-testid": "submit-status"
-        }
       })
     } finally {
       setIsSubmitting(false)

@@ -1,4 +1,4 @@
-export type DetaineeStatus = 'detained' | 'released' | 'deceased' | 'unknown';
+export type DetaineeStatus = 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown' | 'detained';
 export type DetaineeGender = 'male' | 'female' | 'unknown';
 
 export interface Detainee {

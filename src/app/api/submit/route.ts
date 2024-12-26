@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabase.server"
 import { z } from "zod"
-import { Database, DetaineeGender, DetaineeStatus, Detainee } from "@/types"
+import { Database } from "@/lib/database.types"
+import { normalizeNameForDb } from "@/lib/validation"
 
 // In-memory store for rate limiting
 const submissionTimes = new Map<string, number[]>();
@@ -19,37 +20,46 @@ function isRateLimited(ip: string): boolean {
   return recentSubmissions.length >= MAX_SUBMISSIONS_PER_WINDOW;
 }
 
+type DetaineeInsert = Database['public']['Tables']['detainees']['Insert']
+
 const submitSchema = z.object({
   full_name: z.string().min(2, "Name must be at least 2 characters")
     .max(100, "Name must be less than 100 characters")
     .regex(/^[\p{L}\s'-]+$/u, "Name can only contain letters, spaces, hyphens and apostrophes"),
   date_of_detention: z.string()
     .refine(val => !val || !isNaN(Date.parse(val)), "Invalid date format")
+    .nullable()
     .optional(),
   last_seen_location: z.string().min(2, "Location must be at least 2 characters")
     .max(200, "Location must be less than 200 characters"),
   detention_facility: z.string()
     .max(200, "Facility name must be less than 200 characters")
+    .nullable()
     .optional(),
   physical_description: z.string()
     .max(1000, "Description must be less than 1000 characters")
+    .nullable()
     .optional(),
   age_at_detention: z.union([
     z.number()
       .min(0, "Age must be between 0 and 120")
       .max(120, "Age must be between 0 and 120"),
     z.string()
-      .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "Age must be between 0 and 120")
-      .transform(val => val ? Number(val) : null)
-  ]).optional(),
+      .refine(val => !isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120, "Age must be between 0 and 120")
+      .transform(val => val == null || val === undefined ? null : Number(val))
+  ])
+  .nullable()
+  .optional()
+  .transform(val => val == null || val === undefined ? null : val),
   gender: z.enum(["male", "female", "unknown"] as const),
   status: z.enum(["in_custody", "missing", "released", "deceased", "unknown"] as const),
   contact_info: z.string()
     .max(50, "Contact info must be less than 50 characters"),
   additional_notes: z.string()
     .max(2000, "Notes must be less than 2000 characters")
+    .nullable()
     .optional(),
-}) satisfies z.ZodType<Omit<Detainee, "id" | "created_at" | "last_update_date" | "search_vector">>;
+});
 
 export async function POST(request: Request) {
   try {
@@ -95,13 +105,31 @@ export async function POST(request: Request) {
       try {
         console.log('Attempting database insert...');
         
+        const now = new Date().toISOString();
+        
+        // Prepare the data for insert, ensuring all fields match the database schema
+        const insertData: DetaineeInsert = {
+          full_name: validatedData.full_name,
+          original_name: validatedData.full_name, // Store the original name
+          date_of_detention: validatedData.date_of_detention ?? null,
+          last_seen_location: validatedData.last_seen_location,
+          detention_facility: validatedData.detention_facility ?? null,
+          physical_description: validatedData.physical_description ?? null,
+          age_at_detention: validatedData.age_at_detention ?? null,
+          gender: validatedData.gender,
+          status: validatedData.status,
+          contact_info: validatedData.contact_info,
+          additional_notes: validatedData.additional_notes ?? null,
+          created_at: now,
+          last_update_date: now,
+          source_organization: 'Public', // Source organization is always 'Public'
+          organization: 'Public' // Set organization to 'Public' for public submissions
+        };
+
         // Insert the data
         const { data, error: insertError } = await supabaseServer
           .from('detainees')
-          .insert({
-            ...validatedData,
-            last_update_date: new Date().toISOString()
-          } satisfies Database['public']['Tables']['detainees']['Insert'])
+          .insert(insertData)
           .select()
           .single();
 
@@ -130,25 +158,17 @@ export async function POST(request: Request) {
         submissions.push(Date.now());
         submissionTimes.set(ip, submissions);
 
-        return NextResponse.json({
-          message: 'Submission successful',
-          id: data.id,
-          timestamp: data.created_at
-        });
-
+        return NextResponse.json({ success: true, data });
       } catch (dbError) {
-        console.error('Database connection error:', dbError);
+        console.error('Database operation error:', dbError);
         return NextResponse.json(
-          { 
-            error: 'Database connection failed',
-            details: dbError instanceof Error ? dbError.message : 'Could not connect to database'
-          },
+          { error: 'Database operation failed', details: String(dbError) },
           { status: 500 }
         );
       }
-
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
+        console.error('Validation error:', validationError.errors);
         return NextResponse.json(
           { error: 'Validation failed', details: validationError.errors },
           { status: 400 }
@@ -156,14 +176,10 @@ export async function POST(request: Request) {
       }
       throw validationError;
     }
-
   } catch (error) {
-    console.error('Submission error:', error);
+    console.error('Unexpected error:', error);
     return NextResponse.json(
-      { 
-        error: 'Submission failed',
-        message: error instanceof Error ? error.message : 'An unexpected error occurred'
-      },
+      { error: 'Internal server error', details: String(error) },
       { status: 500 }
     );
   }
