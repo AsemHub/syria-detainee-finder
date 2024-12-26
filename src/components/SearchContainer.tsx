@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { SearchBox } from './SearchBox';
-import type { Database } from '@/lib/database.types';
+import type { Database, DetaineeGender } from '@/lib/database.types';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Calendar, MapPin, Building2, User, User2, FileText, Phone, Info, CheckCircle, AlertCircle } from 'lucide-react';
@@ -15,7 +15,7 @@ type Detainee = {
     full_name: string;
     last_seen_location: string | null;
     status: string | null;
-    gender: string | null;
+    gender: DetaineeGender | null;
     age_at_detention: number | null;
     date_of_detention: string | null;
     detention_facility: string | null;
@@ -66,14 +66,14 @@ function normalizeStatus(status: string | null): DetaineeStatus {
 
 function getStatusVariant(status: string | null): "default" | "secondary" | "success" | "destructive" | "warning" | "deceased" {
     const normalizedStatus = normalizeStatus(status);
-    
+
     switch (normalizedStatus) {
         case 'missing':
             return 'destructive';
         case 'in_custody':
             return 'warning';
         case 'deceased':
-            return 'deceased';
+            return 'destructive';
         case 'released':
             return 'success';
         case 'unknown':
@@ -85,14 +85,14 @@ function getStatusVariant(status: string | null): "default" | "secondary" | "suc
 
 function getStatusDisplay(status: string | null): string {
     const normalizedStatus = normalizeStatus(status);
-    
+
     switch (normalizedStatus) {
         case 'in_custody':
             return 'قيد الاعتقال';
         case 'missing':
             return 'مفقود';
         case 'released':
-            return 'مطلق سراح';
+            return 'محرر';
         case 'deceased':
             return 'متوفى';
         case 'unknown':
@@ -124,11 +124,11 @@ export function SearchContainer() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     query,
                     pageSize: 20,
                     pageNumber: 1,
-                    estimateTotal: true 
+                    estimateTotal: true
                 }),
             });
 
@@ -138,7 +138,7 @@ export function SearchContainer() {
             }
 
             const data = await response.json();
-            
+
             console.log('Frontend received data:', {
                 totalCount: data.totalCount,
                 currentPage: data.currentPage,
@@ -147,7 +147,7 @@ export function SearchContainer() {
                 hasPreviousPage: data.hasPreviousPage,
                 resultCount: data.results?.length
             });
-            
+
             // Handle empty results gracefully
             if (!data.results || data.results.length === 0) {
                 setSearchState({
@@ -162,7 +162,7 @@ export function SearchContainer() {
                 });
                 return;
             }
-            
+
             setSearchState({
                 results: data.results,
                 totalCount: data.totalCount || 0,
@@ -198,11 +198,11 @@ export function SearchContainer() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     query: currentQuery,
                     pageNumber: searchState.currentPage + 1,
                     pageSize: searchState.pageSize,
-                    estimateTotal: true 
+                    estimateTotal: true
                 }),
             });
 
@@ -212,7 +212,7 @@ export function SearchContainer() {
             }
 
             const data = await response.json();
-            
+
             console.log('LoadMore received data:', {
                 totalCount: data.totalCount,
                 currentPage: data.currentPage,
@@ -222,19 +222,19 @@ export function SearchContainer() {
                 newResultsCount: data.results?.length,
                 currentResultsCount: searchState.results.length
             });
-            
+
             if (!data.results) {
                 throw new Error('لم يتم العثور على نتائج');
             }
-            
+
             // Filter out any results we've already seen
             const newResults = data.results.filter((r: Detainee) => !searchState.seenIds.has(r.id));
-            
+
             console.log('Filtered results:', {
                 beforeFilter: data.results.length,
                 afterFilter: newResults.length
             });
-            
+
             setSearchState(prev => ({
                 results: [...prev.results, ...newResults],
                 totalCount: data.totalCount || prev.totalCount,
@@ -255,7 +255,7 @@ export function SearchContainer() {
     return (
         <div className="w-full max-w-4xl mx-auto space-y-6" dir="rtl">
             <SearchBox onSearchAction={handleSearch} loading={loading} />
-            
+
             {/* Show message when no results found */}
             {!loading && searchState.results.length === 0 && currentQuery && (
                 <div className="text-center p-4">
@@ -284,7 +284,10 @@ export function SearchContainer() {
                                             <User2 className="w-5 h-5 text-muted-foreground" />
                                             <span className="font-bold text-lg">{result.full_name}</span>
                                         </div>
-                                        <Badge variant={getStatusVariant(result.status)} className="mr-auto">
+                                        <Badge 
+                                            variant={getStatusVariant(result.status)} 
+                                            className="mr-auto text-base px-3 py-1 font-semibold"
+                                        >
                                             {getStatusDisplay(result.status)}
                                         </Badge>
                                     </div>
@@ -302,7 +305,12 @@ export function SearchContainer() {
                                             {result.gender && (
                                                 <div className="flex items-center gap-2 text-sm">
                                                     <User2 className="w-4 h-4 text-muted-foreground" />
-                                                    <span>الجنس: {result.gender === 'male' ? 'ذكر' : result.gender === 'female' ? 'أنثى' : 'غير محدد'}</span>
+                                                    <span>الجنس: {
+                                                        result.gender === 'male' ? 'ذكر' : 
+                                                        result.gender === 'female' ? 'أنثى' : 
+                                                        result.gender === 'unknown' || !result.gender ? 'غير محدد' : 
+                                                        'غير محدد'
+                                                    }</span>
                                                 </div>
                                             )}
                                             {result.physical_description && (
@@ -311,9 +319,15 @@ export function SearchContainer() {
                                                     <span>الوصف الجسدي: {result.physical_description}</span>
                                                 </div>
                                             )}
+                                            {result.date_of_detention && (
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                                                    <span>تاريخ الاعتقال: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        {/* Location Information */}
+                                        {/* Location and Detention Information */}
                                         <div className="space-y-3">
                                             {result.last_seen_location && (
                                                 <div className="flex items-center gap-2 text-sm">
@@ -327,80 +341,41 @@ export function SearchContainer() {
                                                     <span>مركز الاحتجاز: {result.detention_facility}</span>
                                                 </div>
                                             )}
-                                        </div>
-                                    </div>
-
-                                    {/* Dates and Timeline */}
-                                    <div className="border-t pt-4 space-y-3">
-                                        {result.date_of_detention && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Calendar className="w-4 h-4 text-muted-foreground" />
-                                                <span>تاريخ الاعتقال: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
-                                            </div>
-                                        )}
-                                        {result.last_update_date && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Calendar className="w-4 h-4 text-muted-foreground" />
-                                                <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Contact and Source Information */}
-                                    <div className="border-t pt-4 space-y-3">
-                                        {result.contact_info && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Phone className="w-4 h-4 text-muted-foreground" />
-                                                <span>معلومات الاتصال: {result.contact_info}</span>
-                                            </div>
-                                        )}
-                                        {result.source_organization && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Building2 className="w-4 h-4 text-muted-foreground" />
-                                                <span>المنظمة المصدر: {result.source_organization}</span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Additional Notes */}
-                                    {result.additional_notes && (
-                                        <div className="border-t pt-4">
-                                            <div className="flex items-start gap-2 text-sm">
-                                                <Info className="w-4 h-4 text-muted-foreground mt-1" />
-                                                <div>
-                                                    <span className="font-medium block mb-1">ملاحظات إضافية:</span>
-                                                    <p className="text-muted-foreground">{result.additional_notes}</p>
+                                            {result.last_update_date && (
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                                                    <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
                                                 </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Contact and Additional Information */}
+                                    <div className="border-t pt-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-3">
+                                                {result.contact_info && (
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <Phone className="w-4 h-4 text-muted-foreground" />
+                                                        <span>معلومات الاتصال: {result.contact_info}</span>
+                                                    </div>
+                                                )}
+                                                {result.source_organization && (
+                                                    <div className="flex items-center gap-2 text-sm">
+                                                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                                                        <span>المصدر: {result.source_organization}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-3">
+                                                {result.additional_notes && (
+                                                    <div className="flex items-start gap-2 text-sm">
+                                                        <Info className="w-4 h-4 text-muted-foreground mt-1" />
+                                                        <span>ملاحظات إضافية: {result.additional_notes}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    )}
-
-                                    {/* Source Information and Record Status */}
-                                    <div className="border-t pt-4 space-y-3">
-                                        {result.source_organization && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Building2 className="w-4 h-4 text-muted-foreground" />
-                                                <span>المنظمة المصدر: {result.source_organization}</span>
-                                            </div>
-                                        )}
-                                        {result.source_document_id && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <FileText className="w-4 h-4 text-muted-foreground" />
-                                                <span>رقم الوثيقة المصدر: {result.source_document_id}</span>
-                                            </div>
-                                        )}
-                                        {result.record_validation && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <CheckCircle className="w-4 h-4 text-muted-foreground" />
-                                                <span>حالة التحقق: {result.record_validation}</span>
-                                            </div>
-                                        )}
-                                        {result.record_processing_status && (
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                                                <span>حالة المعالجة: {result.record_processing_status}</span>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </CardContent>

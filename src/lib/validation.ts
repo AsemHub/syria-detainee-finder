@@ -109,8 +109,6 @@ export function validateStatus(status: string): DetaineeStatus {
       return 'missing';
     case 'released':
     case 'محرر':
-    case 'مطلق سراح':
-    case 'حر':
       return 'released';
     case 'deceased':
     case 'متوفى':
@@ -118,6 +116,9 @@ export function validateStatus(status: string): DetaineeStatus {
     case 'ميت':
     case 'شهيد':
       return 'deceased';
+    case 'unknown':
+    case 'غير معروف':
+      return 'unknown';
     default:
       return 'unknown';
   }

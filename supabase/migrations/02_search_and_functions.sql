@@ -1,6 +1,6 @@
 -- Syria Detainee Finder Search Functions and Extensions
 
--- Create the Arabic text normalization function
+-- Revised normalize_arabic_text function with comprehensive Arabic normalization
 CREATE OR REPLACE FUNCTION public.normalize_arabic_text(input_text text)
 RETURNS text
 LANGUAGE plpgsql IMMUTABLE
@@ -20,32 +20,38 @@ BEGIN
     -- Remove tatweel (kashida)
     normalized := regexp_replace(normalized, 'ـ', '', 'g');
 
-    -- Remove tashkeel (diacritics)
-    normalized := regexp_replace(normalized, '[ًٌٍَُِّْٰٕٖٓٔ]', '', 'g');
+    -- Remove tashkeel (diacritics) - comprehensive Unicode ranges
+    normalized := regexp_replace(normalized, '[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]', '', 'g');
 
-    -- Normalize hamza forms
-    normalized := regexp_replace(normalized, '[أإآ]', 'ا', 'g');
-    normalized := regexp_replace(normalized, 'ئ|ؤ', 'ء', 'g');
+    -- Normalize ligatures to their component letters
+    normalized := regexp_replace(normalized, 'ﻻ|ﻼ|ﻷ|ﻸ|ﻹ|ﻺ|ﻵ|ﻶ', 'لا', 'g');
 
-    -- Normalize alef forms
-    normalized := regexp_replace(normalized, 'ٱ|إ|آ|ٲ|ٳ|ٵ', 'ا', 'g');
+    -- Normalize hamza forms comprehensively
+    normalized := regexp_replace(normalized, '[أإآٲٳٵ]', 'ا', 'g');  -- All hamza-carrying alifs to alif
+    normalized := regexp_replace(normalized, '[ئؤ]', 'ء', 'g');     -- Hamza on carriers to hamza
+
+    -- Normalize all alif forms to plain alif
+    normalized := regexp_replace(normalized, 'ٱ', 'ا', 'g');        -- Alif wasla to alif
 
     -- Normalize teh marbuta and heh at word end
-    normalized := regexp_replace(normalized, 'ه\M', 'ة', 'g');  -- Convert final ه to ة
+    normalized := regexp_replace(normalized, 'ه\M', 'ة', 'g');      -- Final heh to teh marbuta
 
-    -- Normalize alef maksura and yeh
-    normalized := regexp_replace(normalized, '[ىیي]', 'ي', 'g');
+    -- Normalize alif maksura to alif
+    normalized := regexp_replace(normalized, 'ى', 'ا', 'g');        -- Alif maksura to alif
+
+    -- Normalize Persian/Urdu yeh to Arabic yeh
+    normalized := regexp_replace(normalized, 'ی', 'ي', 'g');        -- Persian yeh to Arabic yeh
 
     -- Normalize waw variations
-    normalized := regexp_replace(normalized, 'ۥ|ۆ', 'و', 'g');
+    normalized := regexp_replace(normalized, 'ۥ|ۆ', 'و', 'g');      -- Various waw forms to waw
 
-    -- Normalize kaf
-    normalized := regexp_replace(normalized, 'ك', 'ک', 'g');
-
+    -- Normalize kaf forms
+    normalized := regexp_replace(normalized, 'ک', 'ك', 'g');        -- Persian kaf to Arabic kaf
+    
     -- Remove non-Arabic characters except numbers, spaces, and common punctuation
     normalized := regexp_replace(normalized, '[^\s\u0600-\u06FF0-9.,!?-]', '', 'g');
 
-    -- Normalize whitespace
+    -- Normalize whitespace (remove extra spaces)
     normalized := regexp_replace(normalized, '\s+', ' ', 'g');
     normalized := trim(normalized);
 

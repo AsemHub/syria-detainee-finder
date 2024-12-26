@@ -322,7 +322,7 @@ export function SubmitForm() {
                     <SelectContent>
                       <SelectItem value="missing">مفقود</SelectItem>
                       <SelectItem value="in_custody">معتقل</SelectItem>
-                      <SelectItem value="released">مطلق سراح</SelectItem>
+                      <SelectItem value="released">محرر</SelectItem>
                       <SelectItem value="deceased">متوفى</SelectItem>
                       <SelectItem value="unknown">غير معروف</SelectItem>
                     </SelectContent>
