@@ -3,11 +3,18 @@ import { Toaster } from "@/components/ui/toaster";
 import { arabic } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/Navbar";
+import { Metadata } from "next"
+import { IBM_Plex_Sans_Arabic } from "next/font/google"
 
 // Import styles in correct order
 import "./globals.css";
 import "react-day-picker/dist/style.css";
 import "@/styles/calendar.css";
+
+const font = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic"],
+  weight: ["100", "200", "300", "400", "500", "600", "700"],
+})
 
 export default function RootLayout({
   children,
@@ -16,6 +23,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+      </head>
       <body className={cn("min-h-screen bg-background font-sans antialiased", arabic.variable)}>
         <NextThemeProvider
           attribute="class"

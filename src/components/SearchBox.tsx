@@ -3,14 +3,15 @@
 import { useState, useCallback } from "react"
 import { Input } from "./ui/input"
 import { Button } from "./ui/button"
-import { Search, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
+import { SearchLovedOnesIcon } from "./ui/icons"
 
 interface SearchBoxProps {
-    onSearchAction: (searchText: string) => Promise<void>;
-    loading?: boolean;
+    onSearch: (searchText: string) => void;
+    isLoading?: boolean;
 }
 
-export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
+export function SearchBox({ onSearch, isLoading = false }: SearchBoxProps) {
     const [query, setQuery] = useState("");
     const [error, setError] = useState<string | null>(null);
 
@@ -26,11 +27,11 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
         }
 
         try {
-            await onSearchAction(query.trim());
+            onSearch(query.trim());
         } catch (error) {
             setError(error instanceof Error ? error.message : 'حدث خطأ غير متوقع');
         }
-    }, [query, onSearchAction]);
+    }, [query, onSearch]);
 
     return (
         <form onSubmit={handleSubmit} className="w-full space-y-4" dir="rtl">
@@ -41,27 +42,25 @@ export function SearchBox({ onSearchAction, loading = false }: SearchBoxProps) {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     className="flex-1 text-right"
-                    disabled={loading}
+                    disabled={isLoading}
                 />
-                <Button type="submit" disabled={loading} variant="default">
-                    {loading ? (
+                <Button type="submit" disabled={isLoading} variant="default" size="lg" className="px-8">
+                    {isLoading ? (
                         <>
-                            <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                            <Loader2 className="ml-2 h-7 w-7 animate-spin" />
                             جاري البحث...
                         </>
                     ) : (
                         <>
-                            <Search className="ml-2 h-4 w-4" />
+                            <SearchLovedOnesIcon className="ml-2 h-7 w-7 text-white" />
                             بحث
                         </>
                     )}
                 </Button>
             </div>
             {error && (
-                <div className="text-red-500 text-sm text-right">
-                    {error}
-                </div>
+                <p className="text-sm text-red-500">{error}</p>
             )}
         </form>
-    );
+    )
 }
