@@ -57,11 +57,17 @@ export type Document = {
 
 export type SearchParams = {
     searchText?: string;
-    status?: DetaineeStatus;
+    detentionStatus?: DetaineeStatus;
     gender?: DetaineeGender;
     ageMin?: number;
     ageMax?: number;
     location?: string;
+    facility?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    pageSize?: number;
+    pageNumber?: number;
+    estimateTotal?: boolean;
 };
 
 export type SearchResponse = {
@@ -73,11 +79,14 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
     // Normalize and validate parameters
     const normalizedParams = {
         searchText: params.searchText?.trim() || null,
-        status: params.status || null,
+        status: params.detentionStatus || null,
         gender: params.gender || null,
         ageMin: typeof params.ageMin === 'number' && !isNaN(params.ageMin) ? params.ageMin : null,
         ageMax: typeof params.ageMax === 'number' && !isNaN(params.ageMax) ? params.ageMax : null,
-        location: params.location?.trim() || null
+        location: params.location?.trim() || null,
+        detentionFacility: params.facility?.trim() || null,
+        dateFrom: params.dateFrom || null,
+        dateTo: params.dateTo || null
     };
 
     // Build the base query
@@ -102,6 +111,14 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
         query = query.lte('age_at_detention', normalizedParams.ageMax);
     }
 
+    if (normalizedParams.dateFrom) {
+        query = query.gte('date_of_detention', normalizedParams.dateFrom);
+    }
+
+    if (normalizedParams.dateTo) {
+        query = query.lte('date_of_detention', normalizedParams.dateTo);
+    }
+
     // Add text search conditions
     if (normalizedParams.searchText) {
         query = query.textSearch('full_name', normalizedParams.searchText, {
@@ -112,6 +129,13 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
 
     if (normalizedParams.location) {
         query = query.textSearch('last_seen_location', normalizedParams.location, {
+            type: 'websearch',
+            config: 'english'
+        });
+    }
+
+    if (normalizedParams.detentionFacility) {
+        query = query.textSearch('detention_facility', normalizedParams.detentionFacility, {
             type: 'websearch',
             config: 'english'
         });

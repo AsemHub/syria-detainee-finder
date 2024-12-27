@@ -144,12 +144,28 @@ export async function performSearch({
   searchText,
   pageSize = 20,
   pageNumber = 1,
-  estimateTotal = true
+  estimateTotal = true,
+  status,
+  gender,
+  ageMin,
+  ageMax,
+  location,
+  detentionFacility,
+  dateFrom,
+  dateTo
 }: {
   searchText: string;
   pageSize?: number;
   pageNumber?: number;
   estimateTotal?: boolean;
+  status?: string;
+  gender?: string;
+  ageMin?: number;
+  ageMax?: number;
+  location?: string;
+  detentionFacility?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }): Promise<SearchResponse> {
   try {
     const normalizedSearchText = normalizeArabicText(searchText);
@@ -157,10 +173,17 @@ export async function performSearch({
     const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
       search_params: {
         query: normalizedSearchText,
-        page_size: pageSize,
-        page_number: pageNumber,
-        estimate_total: estimateTotal,
-        sort_ascending: false
+        pageSize: pageSize,
+        pageNumber: pageNumber,
+        estimateTotal: estimateTotal,
+        detentionStatus: status,
+        gender: gender,
+        ageMin: ageMin,
+        ageMax: ageMax,
+        location: location,
+        facility: detentionFacility,
+        dateFrom: dateFrom,
+        dateTo: dateTo
       }
     });
 

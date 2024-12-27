@@ -1,5 +1,27 @@
 -- Syria Detainee Finder Search Functions and Extensions
 
+-- Create enum types for detainee status and gender if they don't exist
+DO $$ BEGIN
+    CREATE TYPE status_enum AS ENUM (
+        'in_custody',
+        'missing',
+        'released',
+        'deceased',
+        'unknown'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE gender_enum AS ENUM (
+        'male',
+        'female'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 -- Revised normalize_arabic_text function with comprehensive Arabic normalization
 CREATE OR REPLACE FUNCTION public.normalize_arabic_text(input_text text)
 RETURNS text
@@ -151,173 +173,143 @@ CREATE INDEX idx_mv_search_normalized_name ON mv_detainees_search (normalized_na
 CREATE INDEX idx_mv_search_vector ON mv_detainees_search USING gin(search_vector);
 CREATE INDEX idx_mv_search_effective_date ON mv_detainees_search (effective_date);
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS public.search_detainees_enhanced(jsonb);
+
 -- Create the enhanced search function
 CREATE OR REPLACE FUNCTION public.search_detainees_enhanced(search_params JSONB)
 RETURNS JSONB AS $$
 DECLARE
-    query_text TEXT;
-    normalized_query TEXT;
-    page_size INT;
-    page_number INT;
-    sort_ascending BOOLEAN;
-    estimate_total BOOLEAN;
-    total_count INT;
+    query_text text;
+    normalized_query text;
+    page_size int;
+    page_number int;
+    estimate_total boolean;
+    filter_status text;
+    filter_gender text;
+    filter_date_from date;
+    filter_date_to date;
+    filter_age_min int;
+    filter_age_max int;
+    filter_location text;
+    filter_facility text;
+    total_count int;
     search_results JSONB;
 BEGIN
     -- Extract parameters with defaults
     query_text := search_params->>'query';
+    page_size := COALESCE((search_params->>'pageSize')::int, 20);
+    page_number := COALESCE((search_params->>'pageNumber')::int, 1);
+    estimate_total := COALESCE((search_params->>'estimateTotal')::boolean, true);
+    
+    -- Extract filter parameters
+    filter_status := search_params->>'detentionStatus';
+    filter_gender := search_params->>'gender';
+    filter_date_from := (search_params->>'dateFrom')::date;
+    filter_date_to := (search_params->>'dateTo')::date;
+    filter_age_min := (search_params->>'ageMin')::int;
+    filter_age_max := (search_params->>'ageMax')::int;
+    filter_location := search_params->>'location';
+    filter_facility := search_params->>'facility';
     
     -- Return empty result if query doesn't contain Arabic
-    IF NOT contains_arabic(query_text) THEN
+    IF query_text IS NOT NULL AND NOT contains_arabic(query_text) THEN
         RETURN jsonb_build_object(
             'results', '[]'::jsonb,
             'totalCount', 0,
-            'pageSize', COALESCE((search_params->>'page_size')::INT, 20),
-            'currentPage', COALESCE((search_params->>'page_number')::INT, 1),
+            'pageSize', page_size,
+            'currentPage', page_number,
             'totalPages', 0,
             'hasNextPage', false,
             'hasPreviousPage', false
         );
     END IF;
 
-    page_size := COALESCE((search_params->>'page_size')::INT, 20);
-    page_number := COALESCE((search_params->>'page_number')::INT, 1);
-    sort_ascending := COALESCE((search_params->>'sort_ascending')::BOOLEAN, false);
-    estimate_total := COALESCE((search_params->>'estimate_total')::BOOLEAN, true);
-    
-    -- Normalize the query text and handle compound terms
     normalized_query := normalize_arabic_text(query_text);
     
-    -- Handle spaces in compound terms
-    IF normalized_query ~ '\s' THEN
-        normalized_query := regexp_replace(normalized_query, '\s+', ' & ', 'g');
-    END IF;
-
-    -- Calculate total count if needed
-    IF estimate_total THEN
-        SELECT COUNT(*) INTO total_count
-        FROM mv_detainees_search d
-        WHERE 
-            -- Exact word boundaries match
-            d.full_name ~* ('\m' || normalized_query || '\M')
-            -- Surname pattern
-            OR d.full_name ~* ('\mال' || normalized_query || '\M$')
-            -- First name match
-            OR d.full_name ~* ('^' || normalized_query || '\M')
-            -- Middle name with ال prefix
-            OR d.full_name ~* ('\mال' || normalized_query || '\M')
-            -- Start of word match for compound names
-            OR d.full_name ~* ('\m' || normalized_query)
-            -- Detention facility match
-            OR d.detention_facility ~* normalized_query
-            -- Gender terms match
-            OR normalize_arabic_text(d.gender_terms) ~* ('\m' || normalized_query || '\M')
-            -- Full-text search fallback
-            OR search_vector @@ to_tsquery('arabic', normalized_query);
-    END IF;
-
-    -- Main search query with enhanced ranking
-    WITH match_weights AS (
-        SELECT
-            3.0 as gender_match_weight,    -- Highest priority for gender term matches
-            2.5 as exact_word_weight,      -- For exact standalone word matches
-            2.0 as surname_weight,         -- For surname matches ending with "العلي"
-            1.8 as facility_weight,        -- For detention facility matches
-            1.5 as middle_name_weight,     -- For matches with "ال" prefix in middle of names
-            1.2 as partial_start_weight,   -- For matches at start of compound names
-            0.8 as partial_match_weight,   -- For other partial matches
-            0.5 as weak_match_weight       -- For weak matches
-    ),
-    ranked_results AS (
+    WITH base_results AS (
         SELECT 
             d.*,
-            GREATEST(
-                ts_rank(search_vector, to_tsquery('arabic', normalized_query)),
-                CASE 
-                    -- Exact full name match
-                    WHEN d.full_name ~* ('^' || normalized_query || '$') THEN 1.0
-                    -- Surname match
-                    WHEN d.full_name ~* ('\m' || normalized_query || '$') THEN 0.8
-                    -- First name match
-                    WHEN d.full_name ~* ('^' || normalized_query || '\M') THEN 0.7
-                    -- Middle name match
-                    WHEN d.full_name ~* ('\m' || normalized_query || '\M') THEN 0.6
-                    -- Partial name match
-                    WHEN d.full_name ~* normalized_query THEN 0.5
-                    -- Location match
-                    WHEN d.last_seen_location ~* normalized_query THEN 0.4
-                    -- Facility match
-                    WHEN d.detention_facility ~* normalized_query THEN 0.4
-                    -- Gender terms match
-                    WHEN normalize_arabic_text(d.gender_terms) ~* ('\m' || normalized_query || '\M') THEN 0.3
-                    ELSE 0.0
-                END
-            ) as search_rank
-        FROM mv_detainees_search d
-        WHERE
-            -- Exact full name match
-            d.full_name ~* ('^' || normalized_query || '$')
-            -- Surname match (word at end)
-            OR d.full_name ~* ('\m' || normalized_query || '$')
-            -- First name match (word at start)
-            OR d.full_name ~* ('^' || normalized_query || '\M')
-            -- Middle name match
-            OR d.full_name ~* ('\m' || normalized_query || '\M')
-            -- Name with ال prefix at end
-            OR d.full_name ~* ('\mال' || normalized_query || '\M$')
-            -- Name with ال prefix in middle
-            OR d.full_name ~* ('\mال' || normalized_query || '\M')
-            -- Start of word match for compound names
-            OR d.full_name ~* ('\m' || normalized_query)
-            -- Detention facility match
-            OR d.detention_facility ~* normalized_query
-            -- Gender terms match
-            OR normalize_arabic_text(d.gender_terms) ~* ('\m' || normalized_query || '\M')
-            -- Full-text search fallback
-            OR search_vector @@ to_tsquery('arabic', normalized_query)
+            CASE 
+                WHEN query_text IS NOT NULL THEN
+                    GREATEST(
+                        ts_rank(name_fts, to_tsquery('arabic', normalized_query)),
+                        ts_rank(location_fts, to_tsquery('arabic', normalized_query)),
+                        ts_rank(description_fts, to_tsquery('arabic', normalized_query))
+                    )
+                ELSE 1.0  -- Default rank when no query
+            END as rank_score
+        FROM detainees d
+        WHERE 
+            -- Text search condition (only if query_text is provided)
+            (
+                query_text IS NULL OR 
+                name_fts @@ to_tsquery('arabic', normalized_query) OR
+                location_fts @@ to_tsquery('arabic', normalized_query) OR
+                description_fts @@ to_tsquery('arabic', normalized_query)
+            )
+            -- Filter conditions (applied independently of text search)
+            AND (filter_status IS NULL OR status::text = filter_status)
+            AND (filter_gender IS NULL OR gender::text = filter_gender)
+            AND (filter_date_from IS NULL OR date_of_detention >= filter_date_from)
+            AND (filter_date_to IS NULL OR date_of_detention <= filter_date_to)
+            AND (filter_age_min IS NULL OR age_at_detention >= filter_age_min)
+            AND (filter_age_max IS NULL OR age_at_detention <= filter_age_max)
+            AND (filter_location IS NULL OR normalize_arabic_text(last_seen_location) LIKE '%' || normalize_arabic_text(filter_location) || '%')
+            AND (filter_facility IS NULL OR normalize_arabic_text(detention_facility) LIKE '%' || normalize_arabic_text(filter_facility) || '%')
+    ),
+    ranked_results AS (
+        SELECT *
+        FROM base_results
         ORDER BY 
-            search_rank DESC,
-            CASE WHEN sort_ascending THEN d.effective_date END ASC,
-            CASE WHEN NOT sort_ascending THEN d.effective_date END DESC
+            CASE 
+                WHEN query_text IS NOT NULL THEN rank_score
+                ELSE 0.0  -- When no query, don't order by rank
+            END DESC,
+            date_of_detention DESC NULLS LAST
         LIMIT page_size
         OFFSET (page_number - 1) * page_size
     )
     SELECT 
         jsonb_build_object(
-            'results', COALESCE(jsonb_agg(
-                jsonb_build_object(
-                    'id', r.id,
-                    'full_name', r.full_name,
-                    'original_name', r.original_name,
-                    'date_of_detention', r.date_of_detention,
-                    'last_seen_location', r.last_seen_location,
-                    'detention_facility', r.detention_facility,
-                    'physical_description', r.physical_description,
-                    'age_at_detention', r.age_at_detention,
-                    'gender', r.gender,
-                    'status', r.status,
-                    'contact_info', r.contact_info,
-                    'additional_notes', r.additional_notes,
-                    'created_at', r.created_at,
-                    'last_update_date', r.last_update_date,
-                    'source_organization', r.source_organization,
-                    'search_rank', r.search_rank
+            'results', COALESCE((
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'id', r.id,
+                        'full_name', r.full_name,
+                        'original_name', r.original_name,
+                        'gender', r.gender,
+                        'status', r.status,
+                        'age_at_detention', r.age_at_detention,
+                        'date_of_detention', r.date_of_detention,
+                        'detention_facility', r.detention_facility,
+                        'last_seen_location', r.last_seen_location,
+                        'physical_description', r.physical_description,
+                        'additional_notes', r.additional_notes,
+                        'contact_info', r.contact_info,
+                        'created_at', r.created_at,
+                        'last_update_date', r.last_update_date,
+                        'source_organization', r.source_organization,
+                        'search_rank', r.rank_score
+                    )
                 )
+                FROM ranked_results r
             ), '[]'::jsonb),
-            'totalCount', COALESCE(total_count, 0),
+            'totalCount', COALESCE((
+                SELECT COUNT(*)
+                FROM base_results
+            ), 0),
             'pageSize', page_size,
             'currentPage', page_number,
             'totalPages', CASE 
-                WHEN total_count IS NULL THEN 0
+                WHEN total_count IS NULL THEN 1
                 ELSE CEIL(total_count::float / page_size)
             END,
-            'hasNextPage', CASE 
-                WHEN total_count IS NULL THEN false
-                ELSE (page_number * page_size) < total_count
-            END,
+            'hasNextPage', EXISTS (
+                SELECT 1 FROM ranked_results OFFSET page_size LIMIT 1
+            ),
             'hasPreviousPage', page_number > 1
-        ) INTO search_results
-    FROM ranked_results r;
+        ) INTO search_results;
 
     RETURN search_results;
 END;

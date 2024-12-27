@@ -13,8 +13,8 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('Raw request body:', body);
         
-        const { query, pageSize, pageNumber, estimateTotal } = body;
-        console.log('Extracted parameters:', { query, pageSize, pageNumber, estimateTotal });
+        const { query, pageSize, pageNumber, estimateTotal, detentionStatus, gender, ageMin, ageMax, location, facility, dateFrom, dateTo } = body;
+        console.log('Extracted parameters:', { query, pageSize, pageNumber, estimateTotal, detentionStatus, gender, ageMin, ageMax, location, facility });
 
         if (!query || typeof query !== 'string') {
             return NextResponse.json({ 
@@ -31,16 +31,28 @@ export async function POST(request: Request) {
         }
 
         try {
-            const results = await performSearch({
+            const searchParams: SearchParams = {
                 searchText: query.trim(),
+                status: detentionStatus,
+                gender: gender,
+                ageMin: ageMin,
+                ageMax: ageMax,
+                location: location,
+                facility: facility,
+                dateFrom: dateFrom,
+                dateTo: dateTo
+            };
+
+            const results = await performSearch({
+                ...searchParams,
                 pageSize: pageSize || 20,
                 pageNumber: pageNumber || 1,
-                estimateTotal: estimateTotal ?? true  // Default to true if undefined
+                estimateTotal: estimateTotal ?? true
             });
+
             const duration = performance.now() - start;
             console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);
             
-            // Return the response directly
             return NextResponse.json(results);
         } catch (searchError: any) {
             console.error('Search operation failed:', {
@@ -49,7 +61,6 @@ export async function POST(request: Request) {
                 stack: searchError.stack
             });
 
-            // Handle specific error cases
             if (searchError.message.includes('timeout')) {
                 return NextResponse.json(
                     { error: 'Search request timed out', details: 'Please try again' },
