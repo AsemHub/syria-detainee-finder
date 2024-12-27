@@ -22,6 +22,7 @@ import classNames from 'classnames'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Papa from 'papaparse';
 import { supabaseClient } from '@/lib/supabase.client'
+import { DocumentationIcon } from "./ui/icons";
 
 const formSchema = z.object({
   organization: z.string().min(1, {
@@ -458,7 +459,10 @@ export function UploadForm() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">رفع ملف CSV</h2>
+        <div className="flex items-center gap-3">
+          <DocumentationIcon className="w-8 h-8 text-foreground" />
+          <h2 className="text-2xl font-bold">رفع ملف CSV</h2>
+        </div>
         <Button
           variant="outline"
           onClick={() => setShowFormatGuide(!showFormatGuide)}
@@ -483,7 +487,7 @@ export function UploadForm() {
           </div>
         </div>
         <div className="text-sm text-muted-foreground mt-2">
-          ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/test_comprehensive_detainees_v2.csv')}>ملف CSV العينة</Button> للرجوع إليه.
+          ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/template.csv')}>ملف CSV نموذجي</Button> للرجوع إليه.
         </div>
       </div>
       )}

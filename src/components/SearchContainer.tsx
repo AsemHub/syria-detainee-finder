@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { SearchBox } from './SearchBox';
+import { SearchFilters, type SearchFilters as SearchFiltersType } from './SearchFilters';
 import type { Database, DetaineeGender } from '@/lib/database.types';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
@@ -102,7 +103,6 @@ function getStatusDisplay(status: string | null): string {
 }
 
 export function SearchContainer() {
-    const [loading, setLoading] = useState(false);
     const [searchState, setSearchState] = useState<SearchState>({
         results: [],
         totalCount: null,
@@ -111,162 +111,141 @@ export function SearchContainer() {
         hasNextPage: false,
         hasPreviousPage: false,
         pageSize: 20,
-        seenIds: new Set()
+        seenIds: new Set(),
     });
-    const [currentQuery, setCurrentQuery] = useState<string>("");
 
-    const handleSearch = useCallback(async (query: string) => {
-        setLoading(true);
-        setCurrentQuery(query);
+    const [isLoading, setIsLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filters, setFilters] = useState<SearchFiltersType>({});
+
+    const handleSearch = useCallback(async (query: string, page: number = 1, currentFilters: SearchFiltersType = {}) => {
+        if (!query.trim()) {
+            setSearchState({
+                results: [],
+                totalCount: null,
+                currentPage: 1,
+                totalPages: null,
+                hasNextPage: false,
+                hasPreviousPage: false,
+                pageSize: 20,
+                seenIds: new Set(),
+            });
+            return;
+        }
+
+        setIsLoading(true);
+
         try {
+            const searchParams = {
+                query,
+                pageSize: 20,
+                pageNumber: page,
+                estimateTotal: true,
+                ...(currentFilters.status && { detentionStatus: currentFilters.status }),
+                ...(currentFilters.gender && { gender: currentFilters.gender }),
+                ...(typeof currentFilters.ageMin === 'number' && { ageMin: currentFilters.ageMin }),
+                ...(typeof currentFilters.ageMax === 'number' && { ageMax: currentFilters.ageMax }),
+                ...(currentFilters.location && { location: currentFilters.location }),
+                ...(currentFilters.facility && { facility: currentFilters.facility }),
+                ...(currentFilters.dateFrom && { dateFrom: currentFilters.dateFrom }),
+                ...(currentFilters.dateTo && { dateTo: currentFilters.dateTo })
+            };
+
             const response = await fetch('/api/search', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    query,
-                    pageSize: 20,
-                    pageNumber: 1,
-                    estimateTotal: true
-                }),
+                body: JSON.stringify(searchParams),
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'فشل البحث');
+                throw new Error('Search failed');
             }
 
             const data = await response.json();
-
-            console.log('Frontend received data:', {
+            
+            setSearchState(prevState => ({
+                results: page === 1 ? data.results : [...prevState.results, ...data.results],
                 totalCount: data.totalCount,
                 currentPage: data.currentPage,
                 totalPages: data.totalPages,
                 hasNextPage: data.hasNextPage,
                 hasPreviousPage: data.hasPreviousPage,
-                resultCount: data.results?.length
-            });
-
-            // Handle empty results gracefully
-            if (!data.results || data.results.length === 0) {
-                setSearchState({
-                    results: [],
-                    totalCount: data.totalCount || 0,
-                    currentPage: 1,
-                    totalPages: data.totalPages || 1,
-                    hasNextPage: false,
-                    hasPreviousPage: false,
-                    pageSize: 20,
-                    seenIds: new Set()
-                });
-                return;
-            }
-
-            setSearchState({
-                results: data.results,
-                totalCount: data.totalCount || 0,
-                currentPage: data.currentPage || 1,
-                totalPages: data.totalPages || 1,
-                hasNextPage: data.hasNextPage || false,
-                hasPreviousPage: data.hasPreviousPage || false,
-                pageSize: data.pageSize || 20,
-                seenIds: new Set(data.results.map((r: Detainee) => r.id))
-            });
+                pageSize: data.pageSize,
+                seenIds: new Set([...prevState.seenIds, ...data.results.map((r: Detainee) => r.id)]),
+            }));
         } catch (error) {
             console.error('Search error:', error);
-            throw new Error('حدث خطأ أثناء البحث');
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     }, []);
 
+    const handleFiltersChange = useCallback((newFilters: SearchFiltersType) => {
+        setFilters(newFilters);
+        // Reset search state before performing new search with filters
+        setSearchState({
+            results: [],
+            totalCount: null,
+            currentPage: 1,
+            totalPages: null,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            pageSize: 20,
+            seenIds: new Set(),
+        });
+        // Only perform search if there's an active query
+        if (searchQuery.trim()) {
+            handleSearch(searchQuery, 1, newFilters);
+        }
+    }, [searchQuery, handleSearch]);
+
     const loadMore = useCallback(async () => {
-        if (!searchState.hasNextPage || !currentQuery) {
+        if (!searchState.hasNextPage || !searchQuery) {
             console.log('LoadMore early return:', {
                 hasNextPage: searchState.hasNextPage,
-                hasCurrentQuery: !!currentQuery,
+                hasCurrentQuery: !!searchQuery,
                 currentPage: searchState.currentPage
             });
             return;
         }
 
-        setLoading(true);
+        setIsLoading(true);
         try {
-            const response = await fetch('/api/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    query: currentQuery,
-                    pageNumber: searchState.currentPage + 1,
-                    pageSize: searchState.pageSize,
-                    estimateTotal: true
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'فشل تحميل المزيد من النتائج');
-            }
-
-            const data = await response.json();
-
-            console.log('LoadMore received data:', {
-                totalCount: data.totalCount,
-                currentPage: data.currentPage,
-                totalPages: data.totalPages,
-                hasNextPage: data.hasNextPage,
-                hasPreviousPage: data.hasPreviousPage,
-                newResultsCount: data.results?.length,
-                currentResultsCount: searchState.results.length
-            });
-
-            if (!data.results) {
-                throw new Error('لم يتم العثور على نتائج');
-            }
-
-            // Filter out any results we've already seen
-            const newResults = data.results.filter((r: Detainee) => !searchState.seenIds.has(r.id));
-
-            console.log('Filtered results:', {
-                beforeFilter: data.results.length,
-                afterFilter: newResults.length
-            });
-
-            setSearchState(prev => ({
-                results: [...prev.results, ...newResults],
-                totalCount: data.totalCount || prev.totalCount,
-                currentPage: data.currentPage || prev.currentPage + 1,
-                totalPages: data.totalPages || prev.totalPages,
-                hasNextPage: data.hasNextPage || false,
-                hasPreviousPage: data.hasPreviousPage || true,
-                pageSize: data.pageSize || prev.pageSize,
-                seenIds: new Set([...prev.seenIds, ...newResults.map((r: Detainee) => r.id)])
-            }));
+            await handleSearch(searchQuery, searchState.currentPage + 1);
         } catch (error) {
             console.error('Load more error:', error);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
-    }, [searchState, currentQuery]);
+    }, [searchState, searchQuery]);
 
     return (
-        <div className="w-full max-w-4xl mx-auto space-y-6" dir="rtl">
-            <SearchBox onSearchAction={handleSearch} loading={loading} />
+        <div className="space-y-4">
+            <div className="flex gap-2">
+                <SearchBox
+                    onSearch={(query) => {
+                        setSearchQuery(query);
+                        // When performing a new search, use current filters
+                        handleSearch(query, 1, filters);
+                    }}
+                    isLoading={isLoading}
+                />
+                <SearchFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            </div>
 
             {/* Show message when no results found */}
-            {!loading && searchState.results.length === 0 && currentQuery && (
+            {!isLoading && searchState.results.length === 0 && searchQuery && (
                 <div className="text-center p-4">
                     <p className="text-lg text-muted-foreground">
-                        لم يتم العثور على نتائج للبحث عن "{currentQuery}"
+                        لم يتم العثور على نتائج للبحث عن "{searchQuery}"
                     </p>
                 </div>
             )}
 
             {/* Always show total count when we have a query and totalCount is available */}
-            {!loading && currentQuery && searchState.totalCount !== null && (
+            {!isLoading && searchQuery && searchState.totalCount !== null && (
                 <p className="text-muted-foreground text-sm">
                     تم العثور على {searchState.totalCount} نتيجة
                 </p>
@@ -389,9 +368,9 @@ export function SearchContainer() {
                     <Button
                         variant="default"
                         onClick={loadMore}
-                        disabled={loading}
+                        disabled={isLoading}
                     >
-                        {loading ? 'جاري التحميل...' : 'تحميل المزيد'}
+                        {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
                     </Button>
                 </div>
             )}

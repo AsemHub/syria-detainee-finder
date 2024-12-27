@@ -79,6 +79,7 @@ export function Navbar() {
           <div className="space-y-3 px-4 pb-3 pt-2 bg-background">
             <Link
               href="/submit"
+              onClick={() => setMobileMenuOpen(false)}
               className="block rounded-md px-4 py-2 text-base font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-all relative group"
             >
               <span>تقديم معلومات</span>
@@ -86,6 +87,7 @@ export function Navbar() {
             </Link>
             <Link
               href="/upload"
+              onClick={() => setMobileMenuOpen(false)}
               className="block rounded-md px-4 py-2 text-base font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-all relative group"
             >
               <span>رفع ملف</span>
@@ -93,6 +95,7 @@ export function Navbar() {
             </Link>
             <Link
               href="/about"
+              onClick={() => setMobileMenuOpen(false)}
               className="block rounded-md px-4 py-2 text-base font-medium text-foreground hover:bg-primary/10 hover:text-primary transition-all relative group"
             >
               <span>حول</span>
