@@ -10,6 +10,7 @@ import { Calendar, MapPin, Building2, User, User2, FileText, Phone, Info, CheckC
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { Button } from './ui/button';
+import { useToast } from "@/hooks/use-toast";
 
 type Detainee = {
     id: string;
@@ -103,6 +104,7 @@ function getStatusDisplay(status: string | null): string {
 }
 
 export function SearchContainer() {
+    const { toast } = useToast();
     const [searchState, setSearchState] = useState<SearchState>({
         results: [],
         totalCount: null,
@@ -134,6 +136,11 @@ export function SearchContainer() {
         }
 
         setIsLoading(true);
+        toast({
+            title: "جاري البحث...",
+            description: "يتم البحث عن المعتقلين المطابقين لمعايير البحث",
+            duration: 2000,
+        });
 
         try {
             const searchParams = {
@@ -143,10 +150,10 @@ export function SearchContainer() {
                 estimateTotal: true,
                 ...(currentFilters.status && { detentionStatus: currentFilters.status }),
                 ...(currentFilters.gender && { gender: currentFilters.gender }),
-                ...(typeof currentFilters.ageMin === 'number' && { ageMin: currentFilters.ageMin }),
-                ...(typeof currentFilters.ageMax === 'number' && { ageMax: currentFilters.ageMax }),
+                ...(currentFilters.ageMin !== undefined && { ageMin: currentFilters.ageMin }),
+                ...(currentFilters.ageMax !== undefined && { ageMax: currentFilters.ageMax }),
                 ...(currentFilters.location && { location: currentFilters.location }),
-                ...(currentFilters.facility && { facility: currentFilters.facility }),
+                ...(currentFilters.detentionFacility && { facility: currentFilters.detentionFacility }),
                 ...(currentFilters.dateFrom && { dateFrom: currentFilters.dateFrom }),
                 ...(currentFilters.dateTo && { dateTo: currentFilters.dateTo })
             };
@@ -175,8 +182,28 @@ export function SearchContainer() {
                 pageSize: data.pageSize,
                 seenIds: new Set([...prevState.seenIds, ...data.results.map((r: Detainee) => r.id)]),
             }));
+
+            if (data.results.length === 0) {
+                toast({
+                    title: "لم يتم العثور على نتائج",
+                    description: "لم يتم العثور على معتقلين مطابقين لمعايير البحث",
+                    duration: 3000,
+                });
+            } else {
+                toast({
+                    title: "تم العثور على نتائج",
+                    description: `تم العثور على ${data.totalCount} معتقل`,
+                    duration: 3000,
+                });
+            }
         } catch (error) {
             console.error('Search error:', error);
+            toast({
+                title: "خطأ في البحث",
+                description: "حدث خطأ أثناء البحث. يرجى المحاولة مرة أخرى",
+                variant: "destructive",
+                duration: 3000,
+            });
         } finally {
             setIsLoading(false);
         }
@@ -212,10 +239,22 @@ export function SearchContainer() {
         }
 
         setIsLoading(true);
+        toast({
+            title: "جاري تحميل المزيد...",
+            description: "يتم تحميل المزيد من النتائج",
+            duration: 2000,
+        });
+
         try {
             await handleSearch(searchQuery, searchState.currentPage + 1);
         } catch (error) {
             console.error('Load more error:', error);
+            toast({
+                title: "خطأ في التحميل",
+                description: "حدث خطأ أثناء تحميل المزيد من النتائج",
+                variant: "destructive",
+                duration: 3000,
+            });
         } finally {
             setIsLoading(false);
         }

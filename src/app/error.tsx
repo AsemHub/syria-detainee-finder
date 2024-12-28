@@ -5,13 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
 
-export default function Error({
-  error,
-  reset,
-}: {
+interface ErrorProps {
   error: Error & { digest?: string }
   reset: () => void
-}) {
+}
+
+export default function Error({ error, reset }: ErrorProps) {
   useEffect(() => {
     // Log the error to an error reporting service
     console.error(error)
@@ -22,12 +21,12 @@ export default function Error({
       <div className="max-w-md w-full">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>خطأ</AlertTitle>
           <AlertDescription className="mt-2 mb-4">
-            {error.message || "Something went wrong. Please try again."}
+            {error.message || "حدث خطأ ما. يرجى المحاولة مرة أخرى."}
           </AlertDescription>
-          <Button onClick={reset} variant="outline" className="mt-2">
-            Try again
+          <Button onClick={() => reset()} variant="outline" className="mt-2">
+            حاول مرة أخرى
           </Button>
         </Alert>
       </div>

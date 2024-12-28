@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { performSearch } from '@/lib/supabase.server';
-import type { SearchParams } from '@/lib/supabase';
+import type { SearchParams } from '@/lib/database.types';
 
 // Prevent response caching at the edge
 export const dynamic = 'force-dynamic';
@@ -32,23 +32,21 @@ export async function POST(request: Request) {
 
         try {
             const searchParams: SearchParams = {
-                searchText: query.trim(),
-                status: detentionStatus,
+                query: query.trim(),
+                detentionStatus: detentionStatus,
                 gender: gender,
                 ageMin: ageMin,
                 ageMax: ageMax,
                 location: location,
                 facility: facility,
                 dateFrom: dateFrom,
-                dateTo: dateTo
-            };
-
-            const results = await performSearch({
-                ...searchParams,
+                dateTo: dateTo,
                 pageSize: pageSize || 20,
                 pageNumber: pageNumber || 1,
                 estimateTotal: estimateTotal ?? true
-            });
+            };
+
+            const results = await performSearch(searchParams);
 
             const duration = performance.now() - start;
             console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);

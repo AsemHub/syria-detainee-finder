@@ -14,8 +14,8 @@ export function validateRecord(record: any): ValidationResult {
   }
 
   // Validate gender - only add error if an invalid value is provided
-  if (record.gender && validateGender(record.gender) === 'unknown' && 
-      !['unknown', 'غير معروف'].includes(record.gender.toLowerCase().trim())) {
+  if (record.gender && 
+      !['male', 'female', 'unknown', 'ذكر', 'انثى', 'أنثى', 'غير معروف'].includes(record.gender.toLowerCase().trim())) {
     errors.push('قيمة الجنس غير صالحة. يجب أن تكون ذكر، انثى، أو غير معروف');
   }
 

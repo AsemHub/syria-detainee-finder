@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { SlidersHorizontal, ChevronDown } from 'lucide-react'
 import { DetaineeGender } from '@/lib/database.types'
 import { cn } from '@/lib/utils'
+import { useToast } from "@/hooks/use-toast"
 
 export interface SearchFilters {
   status?: string
@@ -17,7 +18,7 @@ export interface SearchFilters {
   ageMin?: number
   ageMax?: number
   location?: string
-  facility?: string
+  detentionFacility?: string
 }
 
 interface SearchFiltersProps {
@@ -81,49 +82,83 @@ function SimpleSelect({ value, onChange, placeholder, options }: SimpleSelectPro
 }
 
 export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) {
-  const [localFilters, setLocalFilters] = useState<SearchFilters>(filters)
+  const { toast } = useToast()
+  const [localFilters, setLocalFilters] = useState<SearchFilters>({
+    status: filters.status || undefined,
+    gender: filters.gender || undefined,
+    dateFrom: filters.dateFrom || '',
+    dateTo: filters.dateTo || '',
+    ageMin: filters.ageMin,
+    ageMax: filters.ageMax,
+    location: filters.location || '',
+    detentionFacility: filters.detentionFacility || ''
+  });
   const [isSheetOpen, setIsSheetOpen] = useState(false)
 
   useEffect(() => {
-    setLocalFilters(filters)
-  }, [filters])
+    setLocalFilters({
+      status: filters.status || undefined,
+      gender: filters.gender || undefined,
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
+      ageMin: filters.ageMin,
+      ageMax: filters.ageMax,
+      location: filters.location || '',
+      detentionFacility: filters.detentionFacility || ''
+    });
+  }, [filters]);
 
   const handleFilterChange = (key: keyof SearchFilters, value: any) => {
     let processedValue = value;
     
     // Handle empty values for number inputs
-    if (typeof value === 'number' && isNaN(value)) {
-      processedValue = undefined;
+    if (key === 'ageMin' || key === 'ageMax') {
+      if (value === '') {
+        processedValue = undefined;
+      } else {
+        const numValue = parseInt(value);
+        processedValue = isNaN(numValue) ? undefined : numValue;
+      }
     }
     
-    // Handle empty values for date inputs
-    if (typeof value === 'string' && value.trim() === '') {
-      processedValue = undefined;
+    // Handle empty values for text inputs
+    if (typeof value === 'string' && key !== 'ageMin' && key !== 'ageMax') {
+      processedValue = value.trim() === '' ? '' : value;
     }
 
-    const newFilters = { ...localFilters, [key]: processedValue }
-    setLocalFilters(newFilters)
-  }
+    const newFilters = { ...localFilters, [key]: processedValue };
+    setLocalFilters(newFilters);
+  };
 
   const applyFilters = () => {
-    onFiltersChange(localFilters)
-    setIsSheetOpen(false)
-  }
+    onFiltersChange(localFilters);
+    setIsSheetOpen(false);
+    toast({
+      title: "تم تطبيق الفلاتر",
+      description: "تم تحديث نتائج البحث وفقاً للفلاتر المحددة",
+      duration: 2000,
+    });
+  };
 
   const clearFilters = () => {
     const emptyFilters: SearchFilters = {
       status: undefined,
       gender: undefined,
-      dateFrom: undefined,
-      dateTo: undefined,
+      dateFrom: '',
+      dateTo: '',
       ageMin: undefined,
       ageMax: undefined,
-      location: undefined,
-      facility: undefined
+      location: '',
+      detentionFacility: ''
     };
     setLocalFilters(emptyFilters);
     onFiltersChange(emptyFilters);
-  }
+    toast({
+      title: "تم إعادة تعيين الفلاتر",
+      description: "تم مسح جميع الفلاتر وتحديث نتائج البحث",
+      duration: 2000,
+    });
+  };
 
   const statusOptions = [
     { value: 'in_custody', label: 'قيد الاعتقال' },
@@ -182,16 +217,16 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
                   <Label className="text-xs">من</Label>
                   <Input
                     type="date"
-                    value={localFilters.dateFrom ?? ''}
-                    onChange={(e) => handleFilterChange('dateFrom', e.target.value || undefined)}
+                    value={localFilters.dateFrom || ''}
+                    onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                   />
                 </div>
                 <div>
                   <Label className="text-xs">إلى</Label>
                   <Input
                     type="date"
-                    value={localFilters.dateTo ?? ''}
-                    onChange={(e) => handleFilterChange('dateTo', e.target.value || undefined)}
+                    value={localFilters.dateTo || ''}
+                    onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                   />
                 </div>
               </div>
@@ -207,7 +242,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
                     min={0}
                     max={100}
                     value={localFilters.ageMin ?? ''}
-                    onChange={(e) => handleFilterChange('ageMin', e.target.value ? parseInt(e.target.value) : undefined)}
+                    onChange={(e) => handleFilterChange('ageMin', e.target.value)}
                   />
                 </div>
                 <div>
@@ -217,7 +252,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
                     min={0}
                     max={100}
                     value={localFilters.ageMax ?? ''}
-                    onChange={(e) => handleFilterChange('ageMax', e.target.value ? parseInt(e.target.value) : undefined)}
+                    onChange={(e) => handleFilterChange('ageMax', e.target.value)}
                   />
                 </div>
               </div>
@@ -227,7 +262,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
               <Label>آخر موقع معروف</Label>
               <Input
                 type="text"
-                value={localFilters.location}
+                value={localFilters.location || ''}
                 onChange={(e) => handleFilterChange('location', e.target.value)}
                 placeholder="المدينة أو المنطقة"
               />
@@ -237,8 +272,8 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
               <Label>مكان الاحتجاز</Label>
               <Input
                 type="text"
-                value={localFilters.facility}
-                onChange={(e) => handleFilterChange('facility', e.target.value)}
+                value={localFilters.detentionFacility || ''}
+                onChange={(e) => handleFilterChange('detentionFacility', e.target.value)}
                 placeholder="السجن أو المعتقل"
               />
             </div>

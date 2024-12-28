@@ -128,15 +128,13 @@ export async function POST(req: Request) {
       transformHeader: (header) => header.trim(),
     });
 
-    if (results.errors && results.errors.length > 0) {
-      console.error('CSV parsing errors:', results.errors);
+    if (!results.data || results.errors.length > 0) {
+      // Update session status to failed
       await supabase
         .from('upload_sessions')
         .update({
           status: 'failed',
-          error_message: 'Failed to parse CSV: ' + results.errors[0].message,
-          errors: results.errors.map(error => ({ message: error.message, row: error.row })),
-          updated_at: new Date().toISOString()
+          error_message: results.errors[0]?.message || 'Failed to parse CSV'
         })
         .eq('id', sessionId);
 
@@ -144,6 +142,11 @@ export async function POST(req: Request) {
         error: 'Failed to parse CSV', 
         details: results.errors[0].message 
       }, { status: 400 });
+    }
+
+    // Ensure sessionId is a string before proceeding
+    if (!sessionId) {
+      throw new Error('Session ID is required for processing records');
     }
 
     // Start background processing

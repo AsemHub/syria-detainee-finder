@@ -122,6 +122,12 @@ export function SubmitForm() {
 
   const checkDuplicates = async (name: string) => {
     setIsChecking(true)
+    toast({
+      title: "جاري التحقق...",
+      description: "يتم التحقق من وجود سجلات مطابقة",
+      duration: 2000,
+    });
+
     try {
       const response = await fetch("/api/check-duplicate", {
         method: "POST",
@@ -136,9 +142,23 @@ export function SubmitForm() {
       const data = await response.json()
       setPotentialMatches(data.matches)
       
-      return data.matches.exact.length > 0 || data.matches.similar.length > 0
+      if (data.matches.exact.length > 0 || data.matches.similar.length > 0) {
+        toast({
+          title: "تم العثور على سجلات مشابهة",
+          description: "يرجى مراجعة السجلات المطابقة قبل المتابعة",
+          duration: 4000,
+        });
+        return true;
+      }
+      return false;
     } catch (error) {
       console.error("Duplicate check error:", error)
+      toast({
+        title: "خطأ في التحقق",
+        description: "حدث خطأ أثناء التحقق من السجلات المطابقة",
+        variant: "destructive",
+        duration: 3000,
+      });
       return false
     } finally {
       setIsChecking(false)
@@ -157,6 +177,12 @@ export function SubmitForm() {
     }
     
     setIsSubmitting(true)
+    toast({
+      title: "جاري الإرسال...",
+      description: "يتم إرسال المعلومات",
+      duration: 2000,
+    });
+
     try {
       const formattedValues = {
         ...values,
@@ -176,28 +202,30 @@ export function SubmitForm() {
 
       if (!response.ok) {
         if (response.status === 429) {
-          throw new Error("Too many submissions. Please try again later.")
+          throw new Error("عدد كبير من المحاولات. يرجى المحاولة لاحقاً.")
         } else if (response.status === 400 && data.details) {
           data.details.forEach((error: { path: string[]; message: string }) => {
             form.setError(error.path[0] as keyof FormData, {
               message: error.message,
             })
           })
-          throw new Error("Please check the form for errors")
+          throw new Error("يرجى التحقق من صحة المعلومات المدخلة")
         }
-        throw new Error(data.error || "Failed to submit")
+        throw new Error(data.error || "فشل في إرسال المعلومات")
       }
 
       toast({
-        title: "Success",
-        description: <div data-testid="submit-status">{data.message || "Detainee information has been submitted successfully."}</div>,
+        title: "تم الإرسال بنجاح",
+        description: "تم إرسال معلومات المعتقل بنجاح",
+        duration: 4000,
       })
       resetForm()
     } catch (error) {
       toast({
-        title: "Error",
-        description: <div data-testid="submit-status">{error instanceof Error ? error.message : "Failed to submit detainee information. Please try again."}</div>,
+        title: "خطأ في الإرسال",
+        description: error instanceof Error ? error.message : "فشل في إرسال معلومات المعتقل. يرجى المحاولة مرة أخرى.",
         variant: "destructive",
+        duration: 4000,
       })
     } finally {
       setIsSubmitting(false)

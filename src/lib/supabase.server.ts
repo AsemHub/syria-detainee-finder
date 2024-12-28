@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Database } from './database.types';
+import { Database, SearchParams } from './database.types';
 import fetch from 'cross-fetch';
 import { normalizeArabicText, areArabicStringsSimilar } from './arabic-utils';
 
@@ -141,34 +141,21 @@ function maintainCache() {
 }
 
 export async function performSearch({
-  searchText,
+  query,
   pageSize = 20,
   pageNumber = 1,
   estimateTotal = true,
-  status,
+  detentionStatus,
   gender,
   ageMin,
   ageMax,
   location,
-  detentionFacility,
+  facility,
   dateFrom,
   dateTo
-}: {
-  searchText: string;
-  pageSize?: number;
-  pageNumber?: number;
-  estimateTotal?: boolean;
-  status?: string;
-  gender?: string;
-  ageMin?: number;
-  ageMax?: number;
-  location?: string;
-  detentionFacility?: string;
-  dateFrom?: string;
-  dateTo?: string;
-}): Promise<SearchResponse> {
+}: SearchParams): Promise<SearchResponse> {
   try {
-    const normalizedSearchText = normalizeArabicText(searchText);
+    const normalizedSearchText = normalizeArabicText(query);
     
     const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
       search_params: {
@@ -176,12 +163,12 @@ export async function performSearch({
         pageSize: pageSize,
         pageNumber: pageNumber,
         estimateTotal: estimateTotal,
-        detentionStatus: status,
+        detentionStatus: detentionStatus,
         gender: gender,
         ageMin: ageMin,
         ageMax: ageMax,
         location: location,
-        facility: detentionFacility,
+        facility: facility,
         dateFrom: dateFrom,
         dateTo: dateTo
       }

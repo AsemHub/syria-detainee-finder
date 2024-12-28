@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Database } from './database.types';
-import type { DetaineeStatus, DetaineeGender } from './database.types';
+import { Database, SearchParams, DetaineeStatus, DetaineeGender } from './database.types';
 import fetch from 'cross-fetch';
 
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -29,7 +28,7 @@ export const createSupabaseClient = () => {
 
 export const supabase = createSupabaseClient()
 
-export type { DetaineeStatus, DetaineeGender } from './database.types';
+export type { DetaineeStatus, DetaineeGender, SearchParams } from './database.types';
 
 export interface Detainee {
     id: string;
@@ -55,30 +54,10 @@ export type Document = {
     file_name: string;
 };
 
-export type SearchParams = {
-    searchText?: string;
-    detentionStatus?: DetaineeStatus;
-    gender?: DetaineeGender;
-    ageMin?: number;
-    ageMax?: number;
-    location?: string;
-    facility?: string;
-    dateFrom?: string;
-    dateTo?: string;
-    pageSize?: number;
-    pageNumber?: number;
-    estimateTotal?: boolean;
-};
-
-export type SearchResponse = {
-    data: Detainee[] | null;
-    error: Error | null;
-};
-
 export const buildSearchQuery = (supabase: any, params: SearchParams) => {
     // Normalize and validate parameters
     const normalizedParams = {
-        searchText: params.searchText?.trim() || null,
+        query: params.query?.trim() || '',
         status: params.detentionStatus || null,
         gender: params.gender || null,
         ageMin: typeof params.ageMin === 'number' && !isNaN(params.ageMin) ? params.ageMin : null,
@@ -120,59 +99,40 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
     }
 
     // Add text search conditions
-    if (normalizedParams.searchText) {
-        query = query.textSearch('full_name', normalizedParams.searchText, {
+    if (normalizedParams.query) {
+        query = query.textSearch('name_fts', normalizedParams.query, {
             type: 'websearch',
-            config: 'english'
-        });
-    }
-
-    if (normalizedParams.location) {
-        query = query.textSearch('last_seen_location', normalizedParams.location, {
-            type: 'websearch',
-            config: 'english'
-        });
-    }
-
-    if (normalizedParams.detentionFacility) {
-        query = query.textSearch('detention_facility', normalizedParams.detentionFacility, {
-            type: 'websearch',
-            config: 'english'
+            config: 'arabic'
         });
     }
 
     return query;
 };
 
-export async function performSearch(params: SearchParams): Promise<{ data: Detainee[] | null; error: Error | null }> {
+export const performSearch = async (params: SearchParams): Promise<{ data: Detainee[] | null; error: Error | null }> => {
     try {
+        // Build the query with all filters
         const query = buildSearchQuery(supabase, params);
-        const { data, error } = await query;
+
+        // Execute the query
+        const { data, error } = await query
+            .limit(params.pageSize || 20)
+            .order('full_name', { ascending: true });
 
         if (error) {
-            throw error;
+            console.error('Search error:', error);
+            return { data: null, error };
         }
 
         return {
-            data: data?.map((d: Database['public']['Tables']['detainees']['Row']) => ({
-                id: d.id,
-                full_name: d.full_name,
-                last_seen_location: d.last_seen_location,
-                status: d.status,
-                gender: d.gender,
-                age_at_detention: d.age_at_detention,
-                date_of_detention: d.date_of_detention,
-                notes: d.additional_notes,
-                detention_facility: d.detention_facility,
-                physical_description: d.physical_description,
-                search_rank: (d as any).search_rank
-            })) || null,
+            data: data as Detainee[],
             error: null
         };
     } catch (error) {
+        console.error('Search failed:', error);
         return {
             data: null,
-            error: error instanceof Error ? error : new Error('An unknown error occurred')
+            error: error as Error
         };
     }
-}
+};
