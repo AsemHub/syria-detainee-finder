@@ -181,8 +181,8 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
           <span>فلترة النتائج</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col h-[100dvh]">
-        <div className="flex-none p-6 border-b relative">
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col h-full">
+        <div className="flex-none p-4 border-b relative">
           <SheetClose className="absolute left-4 top-4">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
@@ -196,7 +196,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
         </div>
         
         <div className="flex-1 overflow-y-auto">
-          <div className="space-y-4 p-6">
+          <div className="space-y-4 p-4 pb-24">
             <div className="space-y-2">
               <Label>الحالة</Label>
               <SimpleSelect
@@ -284,7 +284,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
               />
             </div>
 
-            <div className="space-y-2 mb-20">
+            <div className="space-y-2">
               <Label>مكان الاحتجاز</Label>
               <Input
                 type="text"
@@ -297,8 +297,8 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
           </div>
         </div>
 
-        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 fixed bottom-0 left-0 right-0">
-          <div className="flex gap-3 max-w-lg mx-auto">
+        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 sticky bottom-0 w-full">
+          <div className="flex gap-3 sm:container sm:mx-auto sm:max-w-sm">
             <Button 
               onClick={clearFilters}
               variant="outline"

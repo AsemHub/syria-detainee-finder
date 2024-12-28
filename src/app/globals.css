@@ -426,4 +426,26 @@ textarea {
   .touch-manipulation {
     touch-action: manipulation;
   }
+
+  /* Fix scrolling issues on mobile */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Ensure proper spacing for bottom elements */
+  .pb-24 {
+    padding-bottom: 6rem !important;
+  }
+}
+
+/* Ensure proper button layout on different screen sizes */
+@media (min-width: 641px) {
+  .sm\:container {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
 }
