@@ -29,6 +29,7 @@
     --input: 0 0% 90%;
     --ring: 122 39% 49%;
     --radius: 0.75rem;
+    --viewport-height: 100vh;
   }
  
   .dark {
@@ -225,33 +226,76 @@
   left: auto;
 }
 
-/* Mobile touch device optimizations */
-@media (hover: none) {
-  button:hover,
-  .button:hover {
-    background-color: var(--accent);
+/* Mobile viewport handling */
+:root {
+  --viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
+}
+
+/* Handle mobile keyboard */
+@media (max-width: 640px) {
+  /* Prevent content shift when keyboard appears */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Prevent iOS zoom */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Safe area padding for notched devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
+  /* Prevent pull-to-refresh */
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* Ensure proper sizing with keyboard */
+  .h-screen, .h-\[100vh\], .h-\[100svh\] {
+    height: var(--viewport-height);
+  }
+}
+
+/* Improve mobile input experience */
+@media (max-width: 640px) {
+  input, select {
+    font-size: 16px !important; /* Prevents iOS zoom */
   }
   
-  button:active,
-  .button:active {
-    background-color: hsl(var(--accent) / 0.9);
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+
+  /* Fix scrolling issues on mobile */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* Ensure proper spacing for bottom elements */
+  .pb-24 {
+    padding-bottom: 6rem !important;
   }
 }
 
-/* Simple date input styling */
-input[type="date"] {
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-[dir="rtl"] input[type="date"] {
-  text-align: right;
-}
-
-@media (max-width: 640px) {
-  input[type="date"] {
-    font-size: 16px;
-    padding: 8px;
+/* Ensure proper button layout on different screen sizes */
+@media (min-width: 641px) {
+  .sm\:container {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 }
 
@@ -414,38 +458,5 @@ textarea {
   .touch-manipulation {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-  }
-}
-
-/* Improve mobile input experience */
-@media (max-width: 640px) {
-  input, select {
-    font-size: 16px !important; /* Prevents iOS zoom */
-  }
-  
-  .touch-manipulation {
-    touch-action: manipulation;
-  }
-
-  /* Fix scrolling issues on mobile */
-  .overflow-y-auto {
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
-  }
-
-  /* Ensure proper spacing for bottom elements */
-  .pb-24 {
-    padding-bottom: 6rem !important;
-  }
-}
-
-/* Ensure proper button layout on different screen sizes */
-@media (min-width: 641px) {
-  .sm\:container {
-    max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
   }
 }

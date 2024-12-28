@@ -94,6 +94,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
     detentionFacility: filters.detentionFacility || ''
   });
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   useEffect(() => {
     setLocalFilters({
@@ -107,6 +108,22 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
       detentionFacility: filters.detentionFacility || ''
     });
   }, [filters]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    
+    if (viewport) {
+      const handleResize = () => {
+        setViewportHeight(viewport.height);
+        document.documentElement.style.setProperty('--viewport-height', `${viewport.height}px`);
+      };
+      
+      viewport.addEventListener('resize', handleResize);
+      handleResize(); // Initial size
+      
+      return () => viewport.removeEventListener('resize', handleResize);
+    }
+  }, []);
 
   const handleFilterChange = (key: keyof SearchFilters, value: any) => {
     let processedValue = value;
@@ -181,8 +198,13 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
           <span>فلترة النتائج</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col h-full">
-        <div className="flex-none p-4 border-b relative">
+      <SheetContent 
+        side="right" 
+        className="w-full sm:max-w-lg p-0 flex flex-col h-[100svh] overflow-hidden"
+        style={{ height: viewportHeight ? `${viewportHeight}px` : '100svh' }}
+      >
+        {/* Header - Fixed height */}
+        <div className="flex-none p-4 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
           <SheetClose className="absolute left-4 top-4">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
@@ -195,8 +217,12 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto">
-          <div className="space-y-4 p-4 pb-24">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            applyFilters();
+          }} className="space-y-4 p-4">
             <div className="space-y-2">
               <Label>الحالة</Label>
               <SimpleSelect
@@ -294,12 +320,17 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
                 className="touch-manipulation"
               />
             </div>
-          </div>
+
+            {/* Spacer for bottom buttons */}
+            <div className="h-20" />
+          </form>
         </div>
 
-        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 sticky bottom-0 w-full">
+        {/* Footer - Fixed at bottom */}
+        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 sticky bottom-0 z-10">
           <div className="flex gap-3 sm:container sm:mx-auto sm:max-w-sm">
             <Button 
+              type="button"
               onClick={clearFilters}
               variant="outline"
               className="flex-1"
@@ -307,6 +338,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
               مسح الفلاتر
             </Button>
             <Button 
+              type="submit"
               onClick={applyFilters} 
               className="flex-1"
             >
