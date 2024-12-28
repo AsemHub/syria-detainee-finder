@@ -17,6 +17,7 @@ export function Navbar() {
         <nav className="flex items-center gap-6 text-sm font-medium">
           <Link
             href="/"
+            onClick={() => setMobileMenuOpen(false)}
             className="transition-all hover:text-primary text-foreground font-bold text-base whitespace-nowrap relative group"
           >
             <span>الباحث عن المعتقلين</span>

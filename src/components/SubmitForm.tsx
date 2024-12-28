@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Loader2, AlertCircle } from "lucide-react"
 import {
   Dialog,
@@ -87,7 +87,6 @@ export function SubmitForm() {
     exact: DetaineeMatch[]
     similar: DetaineeMatch[]
   } | null>(null)
-
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -103,6 +102,7 @@ export function SubmitForm() {
       additional_notes: "",
     },
   })
+  const { toast } = useToast()
 
   const resetForm = () => {
     form.reset({
@@ -216,14 +216,14 @@ export function SubmitForm() {
 
       toast({
         title: "تم الإرسال بنجاح",
-        description: "تم إرسال معلومات المعتقل بنجاح",
+        description: "تم إرسال المعلومات بنجاح",
         duration: 4000,
       })
       resetForm()
     } catch (error) {
       toast({
         title: "خطأ في الإرسال",
-        description: error instanceof Error ? error.message : "فشل في إرسال معلومات المعتقل. يرجى المحاولة مرة أخرى.",
+        description: error instanceof Error ? error.message : "فشل في إرسال المعلومات. يرجى المحاولة مرة أخرى.",
         variant: "destructive",
         duration: 4000,
       })
@@ -237,10 +237,10 @@ export function SubmitForm() {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 bg-gradient-to-b from-[#f0f8f0] to-[#e6f3e6] dark:from-[#1a2e1a] dark:to-[#0f1f0f] p-6 rounded-lg border border-[#4CAF50]/10">
         <div className="space-y-2 text-center">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] bg-clip-text text-transparent">
-            تقديم معلومات عن معتقل
+            تقديم معلومات عن شخص مفقود
           </h2>
           <p className="text-muted-foreground">
-            استخدم هذا النموذج لتقديم معلومات عن شخص معتقل. يرجى تقديم أكبر قدر ممكن من التفاصيل لمساعدة الآخرين في العثور على أحبائهم.
+            استخدم هذا النموذج لتقديم معلومات. يرجى تقديم أكبر قدر ممكن من التفاصيل لمساعدة الآخرين في العثور على أحبائهم.
           </p>
         </div>
 
@@ -253,7 +253,7 @@ export function SubmitForm() {
                 <FormLabel>الاسم الكامل*</FormLabel>
                 <FormControl>
                   <Input 
-                    placeholder="أدخل الاسم الكامل للشخص المعتقل" 
+                    placeholder="أدخل الاسم الكامل للشخص" 
                     {...field} 
                     className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
                   />

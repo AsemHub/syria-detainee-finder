@@ -35,31 +35,37 @@ export function SearchBox({ onSearch, isLoading = false }: SearchBoxProps) {
 
     return (
         <form onSubmit={handleSubmit} className="w-full space-y-4" dir="rtl">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-3">
                 <Input
                     type="text"
-                    placeholder="ابحث بالاسم أو الموقع..."
+                    placeholder="ابحث بالاسم أو الموقع أو المعلومات الأخرى..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    className="flex-1 text-right"
+                    className="flex-1 text-right bg-background/90 border-muted min-h-[48px] text-base"
                     disabled={isLoading}
                 />
-                <Button type="submit" disabled={isLoading} variant="default" size="lg" className="px-8">
+                <Button 
+                    type="submit" 
+                    disabled={isLoading} 
+                    variant="default" 
+                    size="lg" 
+                    className="w-full sm:w-auto px-8 min-h-[48px]"
+                >
                     {isLoading ? (
                         <>
-                            <Loader2 className="ml-2 h-7 w-7 animate-spin" />
+                            <Loader2 className="ml-2 h-6 w-6 animate-spin" />
                             جاري البحث...
                         </>
                     ) : (
                         <>
-                            <SearchLovedOnesIcon className="ml-2 h-7 w-7 text-white" />
+                            <SearchLovedOnesIcon className="ml-2 h-6 w-6 text-white" />
                             بحث
                         </>
                     )}
                 </Button>
             </div>
             {error && (
-                <p className="text-sm text-red-500">{error}</p>
+                <p className="text-sm text-red-500 mt-2">{error}</p>
             )}
         </form>
     )

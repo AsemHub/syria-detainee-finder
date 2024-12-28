@@ -186,13 +186,13 @@ export function SearchContainer() {
             if (data.results.length === 0) {
                 toast({
                     title: "لم يتم العثور على نتائج",
-                    description: "لم يتم العثور على معتقلين مطابقين لمعايير البحث",
+                    description: "لم يتم العثور على نتائج مطابقة لمعايير البحث",
                     duration: 3000,
                 });
             } else {
                 toast({
                     title: "تم العثور على نتائج",
-                    description: `تم العثور على ${data.totalCount} معتقل`,
+                    description: `تم العثور على ${data.totalCount} نتيجة`,
                     duration: 3000,
                 });
             }
@@ -262,16 +262,19 @@ export function SearchContainer() {
 
     return (
         <div className="space-y-4">
-            <div className="flex gap-2">
-                <SearchBox
-                    onSearch={(query) => {
-                        setSearchQuery(query);
-                        // When performing a new search, use current filters
-                        handleSearch(query, 1, filters);
-                    }}
-                    isLoading={isLoading}
-                />
-                <SearchFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            <div className="w-full">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                        <SearchBox
+                            onSearch={(query) => {
+                                setSearchQuery(query);
+                                handleSearch(query, 1, filters);
+                            }}
+                            isLoading={isLoading}
+                        />
+                    </div>
+                    <SearchFilters filters={filters} onFiltersChange={handleFiltersChange} />
+                </div>
             </div>
 
             {/* Show message when no results found */}
@@ -293,107 +296,111 @@ export function SearchContainer() {
             {searchState.results.length > 0 && (
                 <div className="space-y-4">
                     {searchState.results.map((result) => (
-                        <Card key={result.id} className="overflow-hidden">
-                            <CardContent className="p-6">
+                        <Card key={result.id} className="overflow-hidden bg-card/50 hover:bg-card/80 transition-colors">
+                            <CardContent className="p-4">
                                 <div className="flex flex-col gap-4">
                                     {/* Header with name and status */}
-                                    <div className="flex items-start justify-between">
+                                    <div className="flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-2">
-                                            <User2 className="w-5 h-5 text-muted-foreground" />
-                                            <span className="font-bold text-lg">{result.full_name}</span>
+                                            <User2 className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                                            <h3 className="font-bold text-lg">{result.full_name}</h3>
                                         </div>
                                         <Badge 
                                             variant={getStatusVariant(result.status)} 
-                                            className="mr-auto text-base px-3 py-1 font-semibold"
+                                            className="text-base px-4 py-1.5 font-semibold shrink-0"
                                         >
                                             {getStatusDisplay(result.status)}
                                         </Badge>
                                     </div>
 
-                                    {/* Main information grid */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {/* Personal Information */}
-                                        <div className="space-y-3">
-                                            {result.age_at_detention && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <User className="w-4 h-4 text-muted-foreground" />
-                                                    <span>العمر عند الاعتقال: {result.age_at_detention} سنة</span>
-                                                </div>
-                                            )}
-                                            {result.gender && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <User2 className="w-4 h-4 text-muted-foreground" />
-                                                    <span>الجنس: {
-                                                        result.gender === 'male' ? 'ذكر' : 
-                                                        result.gender === 'female' ? 'أنثى' : 
-                                                        result.gender === 'unknown' || !result.gender ? 'غير محدد' : 
-                                                        'غير محدد'
-                                                    }</span>
-                                                </div>
-                                            )}
-                                            {result.physical_description && (
-                                                <div className="flex items-start gap-2 text-sm">
-                                                    <FileText className="w-4 h-4 text-muted-foreground mt-1" />
-                                                    <span>الوصف الجسدي: {result.physical_description}</span>
-                                                </div>
-                                            )}
-                                            {result.date_of_detention && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                                                    <span>تاريخ الاعتقال: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                    {/* Personal Information */}
+                                    <div className="space-y-3">
+                                        {result.age_at_detention && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>العمر عند الاعتقال: {result.age_at_detention} سنة</span>
+                                            </div>
+                                        )}
+                                        {result.gender && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <User2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>الجنس: {
+                                                    result.gender === 'male' ? 'ذكر' : 
+                                                    result.gender === 'female' ? 'أنثى' : 
+                                                    'غير محدد'
+                                                }</span>
+                                            </div>
+                                        )}
+                                        {result.physical_description && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>الوصف الجسدي: {result.physical_description}</span>
+                                            </div>
+                                        )}
+                                        {result.date_of_detention && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>تاريخ الاعتقال: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
+                                            </div>
+                                        )}
+                                    </div>
 
-                                        {/* Location and Detention Information */}
-                                        <div className="space-y-3">
-                                            {result.last_seen_location && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <MapPin className="w-4 h-4 text-muted-foreground" />
-                                                    <span>آخر مكان شوهد فيه: {result.last_seen_location}</span>
-                                                </div>
-                                            )}
-                                            {result.detention_facility && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <Building2 className="w-4 h-4 text-muted-foreground" />
-                                                    <span>مركز الاحتجاز: {result.detention_facility}</span>
-                                                </div>
-                                            )}
-                                            {result.last_update_date && (
-                                                <div className="flex items-center gap-2 text-sm">
-                                                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                                                    <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                    {/* Location Information */}
+                                    <div className="space-y-3">
+                                        {result.last_seen_location && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>آخر مكان شوهد فيه: {result.last_seen_location}</span>
+                                            </div>
+                                        )}
+                                        {result.detention_facility && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>مركز الاحتجاز: {result.detention_facility}</span>
+                                            </div>
+                                        )}
+                                        {result.last_update_date && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Contact and Additional Information */}
-                                    <div className="border-t pt-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-3">
-                                                {result.contact_info && (
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <Phone className="w-4 h-4 text-muted-foreground" />
-                                                        <span>معلومات الاتصال: {result.contact_info}</span>
-                                                    </div>
-                                                )}
-                                                {result.source_organization && (
-                                                    <div className="flex items-center gap-2 text-sm">
-                                                        <Building2 className="w-4 h-4 text-muted-foreground" />
-                                                        <span>المصدر: {result.source_organization}</span>
-                                                    </div>
-                                                )}
+                                    <div className="space-y-3 border-t pt-3">
+                                        {result.contact_info && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>معلومات الاتصال: {result.contact_info}</span>
                                             </div>
-                                            <div className="space-y-3">
-                                                {result.additional_notes && (
-                                                    <div className="flex items-start gap-2 text-sm">
-                                                        <Info className="w-4 h-4 text-muted-foreground mt-1" />
-                                                        <span>ملاحظات إضافية: {result.additional_notes}</span>
-                                                    </div>
-                                                )}
+                                        )}
+                                        {result.source_organization && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <Info className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>المصدر: {result.source_organization}</span>
                                             </div>
-                                        </div>
+                                        )}
+                                        {result.additional_notes && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                <span>ملاحظات إضافية: {result.additional_notes}</span>
+                                            </div>
+                                        )}
+                                        {result.record_validation && (
+                                            <div className="flex gap-3 text-sm items-center">
+                                                {result.record_validation === 'verified' ? (
+                                                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                                ) : (
+                                                    <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                                                )}
+                                                <span>حالة التحقق: {
+                                                    result.record_validation === 'verified' ? 'تم التحقق' :
+                                                    result.record_validation === 'pending' ? 'قيد المراجعة' :
+                                                    'لم يتم التحقق'
+                                                }</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </CardContent>
@@ -403,11 +410,11 @@ export function SearchContainer() {
             )}
 
             {searchState.hasNextPage && (
-                <div className="flex justify-center">
+                <div className="flex justify-center mt-6">
                     <Button
-                        variant="default"
                         onClick={loadMore}
                         disabled={isLoading}
+                        className="min-w-[200px]"
                     >
                         {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
                     </Button>
