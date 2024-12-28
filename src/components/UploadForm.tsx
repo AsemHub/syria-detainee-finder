@@ -488,7 +488,7 @@ export function UploadForm() {
           </div>
         </div>
         <div className="text-sm text-muted-foreground mt-2">
-          ملاحظة: يمكنك تنزيل <Button variant="link" className="p-0 h-auto" onClick={() => window.open('/template.csv')}>ملف CSV نموذجي</Button> للرجوع إليه.
+          ملاحظة: يمكنك تنزيل <a href="/api/download-template" className="text-primary hover:underline" download="template.csv">قالب CSV</a> للرجوع إليه.
         </div>
       </div>
       )}
