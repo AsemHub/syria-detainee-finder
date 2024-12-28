@@ -181,129 +181,137 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
           <span>فلترة النتائج</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-lg p-0">
-        <div className="flex flex-col h-[100dvh]">
-          <div className="p-6 border-b relative">
-            <SheetClose className="absolute left-4 top-4">
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </SheetClose>
-            <div className="pr-4">
-              <SheetTitle>فلترة النتائج</SheetTitle>
-              <SheetDescription>
-                استخدم هذه الخيارات لتضييق نطاق البحث
-              </SheetDescription>
-            </div>
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col h-[100dvh]">
+        <div className="flex-none p-6 border-b relative">
+          <SheetClose className="absolute left-4 top-4">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </SheetClose>
+          <div className="pr-4">
+            <SheetTitle>فلترة النتائج</SheetTitle>
+            <SheetDescription>
+              استخدم هذه الخيارات لتضييق نطاق البحث
+            </SheetDescription>
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-6 pb-32">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <Label>الحالة</Label>
-                <SimpleSelect
-                  value={localFilters.status}
-                  onChange={(value) => handleFilterChange('status', value)}
-                  placeholder="اختر الحالة"
-                  options={statusOptions}
-                />
-              </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-4 p-6">
+            <div className="space-y-2">
+              <Label>الحالة</Label>
+              <SimpleSelect
+                value={localFilters.status}
+                onChange={(value) => handleFilterChange('status', value)}
+                placeholder="اختر الحالة"
+                options={statusOptions}
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label>الجنس</Label>
-                <SimpleSelect
-                  value={localFilters.gender}
-                  onChange={(value) => handleFilterChange('gender', value as DetaineeGender)}
-                  placeholder="اختر الجنس"
-                  options={genderOptions}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>الجنس</Label>
+              <SimpleSelect
+                value={localFilters.gender}
+                onChange={(value) => handleFilterChange('gender', value as DetaineeGender)}
+                placeholder="اختر الجنس"
+                options={genderOptions}
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label>تاريخ الاعتقال</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">من</Label>
-                    <Input
-                      type="date"
-                      value={localFilters.dateFrom || ''}
-                      onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">إلى</Label>
-                    <Input
-                      type="date"
-                      value={localFilters.dateTo || ''}
-                      onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                    />
-                  </div>
+            <div className="space-y-2">
+              <Label>تاريخ الاعتقال</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">من</Label>
+                  <Input
+                    type="date"
+                    value={localFilters.dateFrom || ''}
+                    onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                    className="touch-manipulation"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">إلى</Label>
+                  <Input
+                    type="date"
+                    value={localFilters.dateTo || ''}
+                    onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                    className="touch-manipulation"
+                  />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label>العمر عند الاعتقال</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">من</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={localFilters.ageMin ?? ''}
-                      onChange={(e) => handleFilterChange('ageMin', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">إلى</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={localFilters.ageMax ?? ''}
-                      onChange={(e) => handleFilterChange('ageMax', e.target.value)}
-                    />
-                  </div>
+            <div className="space-y-2">
+              <Label>العمر عند الاعتقال</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">من</Label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    min={0}
+                    max={100}
+                    value={localFilters.ageMin ?? ''}
+                    onChange={(e) => handleFilterChange('ageMin', e.target.value)}
+                    className="touch-manipulation"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">إلى</Label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    min={0}
+                    max={100}
+                    value={localFilters.ageMax ?? ''}
+                    onChange={(e) => handleFilterChange('ageMax', e.target.value)}
+                    className="touch-manipulation"
+                  />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label>آخر موقع معروف</Label>
-                <Input
-                  type="text"
-                  value={localFilters.location || ''}
-                  onChange={(e) => handleFilterChange('location', e.target.value)}
-                  placeholder="المدينة أو المنطقة"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>آخر موقع معروف</Label>
+              <Input
+                type="text"
+                value={localFilters.location || ''}
+                onChange={(e) => handleFilterChange('location', e.target.value)}
+                placeholder="المدينة أو المنطقة"
+                className="touch-manipulation"
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label>مكان الاحتجاز</Label>
-                <Input
-                  type="text"
-                  value={localFilters.detentionFacility || ''}
-                  onChange={(e) => handleFilterChange('detentionFacility', e.target.value)}
-                  placeholder="السجن أو المعتقل"
-                />
-              </div>
+            <div className="space-y-2 mb-20">
+              <Label>مكان الاحتجاز</Label>
+              <Input
+                type="text"
+                value={localFilters.detentionFacility || ''}
+                onChange={(e) => handleFilterChange('detentionFacility', e.target.value)}
+                placeholder="السجن أو المعتقل"
+                className="touch-manipulation"
+              />
             </div>
           </div>
+        </div>
 
-          <div className="sticky bottom-0 border-t bg-background/80 backdrop-blur-sm p-4">
-            <div className="flex gap-3">
-              <Button 
-                onClick={clearFilters}
-                variant="outline"
-                className="flex-1"
-              >
-                مسح الفلاتر
-              </Button>
-              <Button 
-                onClick={applyFilters} 
-                className="flex-1"
-              >
-                تطبيق الفلاتر
-              </Button>
-            </div>
+        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 fixed bottom-0 left-0 right-0">
+          <div className="flex gap-3 max-w-lg mx-auto">
+            <Button 
+              onClick={clearFilters}
+              variant="outline"
+              className="flex-1"
+            >
+              مسح الفلاتر
+            </Button>
+            <Button 
+              onClick={applyFilters} 
+              className="flex-1"
+            >
+              تطبيق الفلاتر
+            </Button>
           </div>
         </div>
       </SheetContent>

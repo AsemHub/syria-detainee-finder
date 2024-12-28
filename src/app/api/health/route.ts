@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabase.server"
+import Logger from "@/lib/logger"
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
     // Try a simple query to check connection
-    console.log('Testing Supabase connection to:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    Logger.info('Testing Supabase connection to:', process.env.NEXT_PUBLIC_SUPABASE_URL)
     const { data, error } = await supabaseServer
       .from('detainees')
       .select('id')
       .limit(1)
 
     if (error) {
-      console.error('Supabase connection error:', {
+      Logger.error('Supabase connection error:', {
         message: error.message,
         code: error.code,
         details: error.details,
@@ -36,7 +37,7 @@ export async function GET() {
       recordCount: data
     })
   } catch (error) {
-    console.error('Health check failed:', error)
+    Logger.error('Health check failed:', error)
     return NextResponse.json(
       { 
         status: 'error',

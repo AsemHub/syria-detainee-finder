@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
 import { performSearch } from '@/lib/supabase.server';
 import type { SearchParams } from '@/lib/database.types';
+import Logger from "@/lib/logger"
 
 // Prevent response caching at the edge
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
-        console.log('Received search request');
-        const start = performance.now();
+        const startTime = performance.now();
+        Logger.info('Received search request');
         
         const body = await request.json();
-        console.log('Raw request body:', body);
+        Logger.debug('Raw request body:', body);
         
-        const { query, pageSize, pageNumber, estimateTotal, detentionStatus, gender, ageMin, ageMax, location, facility, dateFrom, dateTo } = body;
-        console.log('Extracted parameters:', { query, pageSize, pageNumber, estimateTotal, detentionStatus, gender, ageMin, ageMax, location, facility });
+        const { query, pageSize = 10, pageNumber = 1, estimateTotal = false, detentionStatus, gender, ageMin, ageMax, location, facility, dateFrom, dateTo } = body;
+        Logger.debug('Extracted parameters:', { query, pageSize, pageNumber, estimateTotal, detentionStatus, gender, ageMin, ageMax, location, facility, dateFrom, dateTo });
 
         if (!query || typeof query !== 'string') {
             return NextResponse.json({ 
@@ -41,23 +42,19 @@ export async function POST(request: Request) {
                 facility: facility,
                 dateFrom: dateFrom,
                 dateTo: dateTo,
-                pageSize: pageSize || 20,
-                pageNumber: pageNumber || 1,
-                estimateTotal: estimateTotal ?? true
+                pageSize: pageSize,
+                pageNumber: pageNumber,
+                estimateTotal: estimateTotal
             };
 
             const results = await performSearch(searchParams);
 
-            const duration = performance.now() - start;
-            console.log(`Search completed successfully in ${duration.toFixed(2)}ms`);
+            const duration = performance.now() - startTime;
+            Logger.info(`Search completed successfully in ${duration.toFixed(2)}ms`);
             
             return NextResponse.json(results);
         } catch (searchError: any) {
-            console.error('Search operation failed:', {
-                error: searchError.message,
-                cause: searchError.cause?.message,
-                stack: searchError.stack
-            });
+            Logger.error('Search operation failed:', searchError);
 
             if (searchError.message.includes('timeout')) {
                 return NextResponse.json(
@@ -77,11 +74,7 @@ export async function POST(request: Request) {
             );
         }
     } catch (error: any) {
-        console.error('API route error:', {
-            error: error.message,
-            cause: error.cause?.message,
-            stack: error.stack
-        });
+        Logger.error('API route error:', error);
         return NextResponse.json(
             { error: 'Internal server error', details: error.message },
             { status: 500 }

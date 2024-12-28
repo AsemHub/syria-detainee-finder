@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Database, SearchParams } from './database.types';
 import fetch from 'cross-fetch';
 import { normalizeArabicText, areArabicStringsSimilar } from './arabic-utils';
+import Logger from "@/lib/logger"
 
 // Validate environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -175,12 +176,12 @@ export async function performSearch({
     });
 
     if (error) {
-      console.error('Database error:', error);
+      Logger.error('Database error:', error);
       throw error;
     }
 
     if (!data) {
-      console.warn('No data returned from search');
+      Logger.warn('No data returned from search');
       return {
         results: [],
         totalCount: 0,
@@ -193,7 +194,7 @@ export async function performSearch({
     }
 
     // Log the raw response for debugging
-    console.log('Raw database response:', data);
+    Logger.debug('Raw database response:', data);
 
     // Parse and type the response - matching exact property names from PostgreSQL
     type SearchResponseData = {
@@ -219,7 +220,7 @@ export async function performSearch({
       pageSize: response.pageSize || pageSize
     };
   } catch (error: any) {
-    console.error('Search failed:', {
+    Logger.error('Search failed:', {
       message: error.message,
       details: error.details,
       hint: error.hint,

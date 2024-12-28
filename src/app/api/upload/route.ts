@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { validateRecord, validateGender, validateStatus, normalizeNameForDb, cleanupText } from '@/lib/validation';
 import { Database } from '@/lib/database.types';
+import Logger from "@/lib/logger";
 
 // Helper function to sanitize file name for storage
 function sanitizeFileName(fileName: string): string {
@@ -16,25 +17,25 @@ export async function POST(req: Request) {
   let sessionId: string | null = null;
 
   try {
-    console.log('Starting file upload process...');
+    Logger.info('Starting file upload process...');
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const organization = formData.get('organization') as string;
 
-    console.log('Received file:', file?.name, 'Organization:', organization, 'Type:', file?.type);
+    Logger.debug('Received file:', file?.name, 'Organization:', organization, 'Type:', file?.type);
 
     if (!file || !organization) {
-      console.error('Missing required fields:', { file: !!file, organization: !!organization });
+      Logger.error('Missing required fields:', { file: !!file, organization: !!organization });
       return NextResponse.json({ error: 'File and organization are required' }, { status: 400 });
     }
 
     // Verify file type
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      console.error('Invalid file type:', file.type);
+      Logger.error('Invalid file type:', file.type);
       return NextResponse.json({ error: 'Only CSV files are allowed' }, { status: 400 });
     }
 
-    console.log('Creating upload session...');
+    Logger.info('Creating upload session...');
     // Create upload session
     const { data: session, error: sessionError } = await supabase
       .from('upload_sessions')
@@ -58,12 +59,12 @@ export async function POST(req: Request) {
       .single();
 
     if (sessionError || !session) {
-      console.error('Error creating upload session:', sessionError);
+      Logger.error('Error creating upload session:', sessionError);
       return NextResponse.json({ error: 'Failed to create upload session' }, { status: 500 });
     }
 
     sessionId = session.id;
-    console.log('Upload session created:', sessionId);
+    Logger.info('Upload session created:', sessionId);
 
     // Sanitize organization name and file name for storage
     const sanitizedOrg = sanitizeFileName(organization);
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
     // Get file buffer for upload
     const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-    console.log('Uploading file to storage:', storageFileName);
+    Logger.info('Uploading file to storage:', storageFileName);
     // Upload file to Supabase Storage
     const { error: uploadError } = await supabase
       .storage
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
       });
 
     if (uploadError) {
-      console.error('Error uploading file:', uploadError);
+      Logger.error('Error uploading file:', uploadError);
       await supabase
         .from('upload_sessions')
         .update({
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
 
-    console.log('File uploaded successfully, getting public URL...');
+    Logger.info('File uploaded successfully, getting public URL...');
     // Get file URL
     const { data: { publicUrl } } = supabase
       .storage
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
       .eq('id', sessionId);
 
     // Start processing the file
-    console.log('Starting CSV processing...');
+    Logger.info('Starting CSV processing...');
     const fileText = await file.text();
     
     // Parse CSV to validate format
@@ -150,7 +151,7 @@ export async function POST(req: Request) {
     }
 
     // Start background processing
-    processRecords(results.data, sessionId, organization, supabase).catch(console.error);
+    processRecords(results.data, sessionId, organization, supabase).catch(Logger.error);
 
     // Return success response with session ID
     return NextResponse.json({ 
@@ -159,7 +160,7 @@ export async function POST(req: Request) {
     }, { status: 200 });
 
   } catch (error) {
-    console.error('Upload error:', error);
+    Logger.error('Upload error:', error);
     
     // If we have a session ID, update it with the error
     if (sessionId) {
@@ -187,7 +188,7 @@ async function processRecords(
   organization: string,
   supabase: SupabaseClient<Database>
 ) {
-  console.log('Processing records in background:', records.length);
+  Logger.info('Processing records in background:', records.length);
   
   let processedRecords = 0;
   let validRecordsCount = 0;
@@ -219,12 +220,12 @@ async function processRecords(
     const batchSize = 10;
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      console.log(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(records.length / batchSize)}`);
+      Logger.debug(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(records.length / batchSize)}`);
 
       for (const record of batch) {
         try {
           const currentName = record.full_name || '';
-          console.log(`Processing record: ${currentName} (${processedRecords + 1}/${records.length})`);
+          Logger.debug(`Processing record: ${currentName} (${processedRecords + 1}/${records.length})`);
 
           // Update processing status
           await supabase
@@ -336,7 +337,7 @@ async function processRecords(
           processedRecords++;
 
         } catch (error) {
-          console.error('Error processing record:', error);
+          Logger.error('Error processing record:', error);
           invalidRecordsCount++;
           uploadErrors.push({
             record: record.full_name || '',
@@ -368,9 +369,9 @@ async function processRecords(
       })
       .eq('id', sessionId);
 
-    console.log('Background processing completed successfully');
+    Logger.info('Background processing completed successfully');
   } catch (error) {
-    console.error('Background processing failed:', error);
+    Logger.error('Background processing failed:', error);
     
     // Update session with error status
     await supabase

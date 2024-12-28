@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase.server"
 import { z } from "zod"
 import { Database } from "@/lib/database.types"
 import { normalizeNameForDb } from "@/lib/validation"
+import Logger from "@/lib/logger"
 
 // In-memory store for rate limiting
 const submissionTimes = new Map<string, number[]>();
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
   try {
     // Verify Supabase connection
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('Missing Supabase environment variables:', {
+      Logger.error('Missing Supabase environment variables:', {
         url: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
         key: !!process.env.SUPABASE_SERVICE_ROLE_KEY
       });
@@ -89,9 +90,9 @@ export async function POST(request: Request) {
     let body;
     try {
       body = await request.json();
-      console.log('Received request body:', body);
+      Logger.debug('Received request body:', body);
     } catch (parseError) {
-      console.error('JSON parse error:', parseError);
+      Logger.error('JSON parse error:', parseError);
       return NextResponse.json(
         { error: 'Invalid request body', details: 'Could not parse JSON' },
         { status: 400 }
@@ -100,10 +101,10 @@ export async function POST(request: Request) {
     
     try {
       const validatedData = submitSchema.parse(body);
-      console.log('Validated data:', validatedData);
+      Logger.debug('Validated data:', validatedData);
       
       try {
-        console.log('Attempting database insert...');
+        Logger.info('Attempting database insert...');
         
         const now = new Date().toISOString();
         
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
           .single();
 
         if (insertError) {
-          console.error('Database error:', {
+          Logger.error('Database error:', {
             message: insertError.message,
             code: insertError.code,
             details: insertError.details,
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
           );
         }
 
-        console.log('Database insert successful:', data);
+        Logger.info('Database insert successful:', data);
 
         // Record the submission time for rate limiting
         const submissions = submissionTimes.get(ip) || [];
@@ -160,7 +161,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, data });
       } catch (dbError) {
-        console.error('Database operation error:', dbError);
+        Logger.error('Database operation error:', dbError);
         return NextResponse.json(
           { error: 'Database operation failed', details: String(dbError) },
           { status: 500 }
@@ -168,7 +169,7 @@ export async function POST(request: Request) {
       }
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        console.error('Validation error:', validationError.errors);
+        Logger.error('Validation error:', validationError.errors);
         return NextResponse.json(
           { error: 'Validation failed', details: validationError.errors },
           { status: 400 }
@@ -177,7 +178,7 @@ export async function POST(request: Request) {
       throw validationError;
     }
   } catch (error) {
-    console.error('Unexpected error:', error);
+    Logger.error('Unexpected error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: String(error) },
       { status: 500 }

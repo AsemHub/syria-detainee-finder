@@ -13,6 +13,14 @@ export function validateRecord(record: any): ValidationResult {
     errors.push('الاسم الكامل مطلوب');
   }
 
+  if (!record.last_seen_location) {
+    errors.push('آخر مكان شوهد فيه مطلوب');
+  }
+
+  if (!record.contact_info) {
+    errors.push('معلومات الاتصال مطلوبة');
+  }
+
   // Validate gender - only add error if an invalid value is provided
   if (record.gender && 
       !['male', 'female', 'unknown', 'ذكر', 'انثى', 'أنثى', 'غير معروف'].includes(record.gender.toLowerCase().trim())) {
@@ -76,15 +84,11 @@ export function validateGender(gender: string): DetaineeGender {
     case 'male':
     case 'ذكر':
     case 'رجل':
-    case 'm':
-    case 'ذ':
       return 'male';
     case 'female':
     case 'انثى':
     case 'أنثى':
     case 'امرأة':
-    case 'f':
-    case 'ا':
       return 'female';
     default:
       return 'unknown';

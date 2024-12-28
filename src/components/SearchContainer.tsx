@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { Button } from './ui/button';
 import { useToast } from "@/hooks/use-toast";
+import Logger from "@/lib/logger";
 
 type Detainee = {
     id: string;
@@ -230,7 +231,7 @@ export function SearchContainer() {
 
     const loadMore = useCallback(async () => {
         if (!searchState.hasNextPage || !searchQuery) {
-            console.log('LoadMore early return:', {
+            Logger.debug('LoadMore early return:', {
                 hasNextPage: searchState.hasNextPage,
                 hasCurrentQuery: !!searchQuery,
                 currentPage: searchState.currentPage

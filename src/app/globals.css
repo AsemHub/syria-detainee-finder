@@ -409,3 +409,21 @@ textarea {
   transform: translateY(-2px);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
+
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Improve mobile input experience */
+@media (max-width: 640px) {
+  input, select {
+    font-size: 16px !important; /* Prevents iOS zoom */
+  }
+  
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+}
