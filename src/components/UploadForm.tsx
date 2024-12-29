@@ -197,9 +197,46 @@ export function UploadForm() {
   useEffect(() => {
     if (!sessionId) return;
 
-    const setupSubscription = () => {
+    const setupSubscription = async () => {
       Logger.debug('Setting up real-time subscription for session', { sessionId });
 
+      // Get initial session state
+      const { data: initialSession } = await supabase
+        .from('upload_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single();
+
+      if (initialSession) {
+        Logger.debug('Initial session state', { initialSession });
+        // Update initial state
+        setStats({
+          total: initialSession.total_records || 0,
+          valid: initialSession.valid_records || 0,
+          invalid: initialSession.invalid_records || 0,
+          duplicates: initialSession.duplicate_records || 0
+        });
+        
+        if (initialSession.current_record) {
+          setCurrentRecord(initialSession.current_record);
+        }
+
+        if (initialSession.total_records && initialSession.processed_records) {
+          const progress = Math.round((initialSession.processed_records / initialSession.total_records) * 100);
+          setProcessingProgress(progress);
+        }
+
+        if (initialSession.errors && Array.isArray(initialSession.errors)) {
+          setErrors(initialSession.errors);
+        }
+
+        if (initialSession.status === 'completed') {
+          setStatus('completed');
+          setIsUploading(false);
+        }
+      }
+
+      // Set up real-time subscription
       const channel = supabase
         .channel(`upload_session_${sessionId}`)
         .on(
@@ -212,9 +249,9 @@ export function UploadForm() {
           },
           (payload) => {
             const data = payload.new as UploadSession;
-            Logger.debug('Session update', { sessionId, data });
+            Logger.debug('Session update received', { sessionId, data });
 
-            // Update stats
+            // Update stats with correct property names
             setStats({
               total: data.total_records || 0,
               valid: data.valid_records || 0,
@@ -240,7 +277,7 @@ export function UploadForm() {
 
             // Update status based on session state
             if (data.status === 'completed') {
-              Logger.debug('Upload completed', { sessionId });
+              Logger.debug('Upload completed', { sessionId, stats: data });
               setStatus('completed');
               setIsUploading(false);
             } else if (data.status === 'failed') {
@@ -248,50 +285,29 @@ export function UploadForm() {
               setStatus('failed');
               setIsUploading(false);
               if (data.error_message) {
-                setErrors(prev => {
-                  const newError: UploadError = {
-                    record: '',
-                    errors: [{
-                      message: data.error_message || 'Unknown error',
-                      type: 'error'
-                    }]
-                  };
-                  return prev.some(e => e.errors.some(err => err.message === newError.errors[0].message))
-                    ? prev 
-                    : [...prev, newError];
-                });
+                setErrors([{
+                  record: '',
+                  errors: [{
+                    message: data.error_message,
+                    type: 'error'
+                  }]
+                }]);
               }
-            } else if (data.status === 'processing') {
-              setStatus('processing');
             }
           }
-        )
-        .subscribe((status) => {
-          Logger.debug('Subscription status', { sessionId, status });
+        );
 
-          if (status === 'SUBSCRIBED') {
-            Logger.debug('Successfully subscribed to changes', { sessionId });
-          } else if (status === 'CLOSED') {
-            Logger.debug('Subscription closed', { sessionId });
-          } else if (status === 'CHANNEL_ERROR') {
-            Logger.error('Channel error', { sessionId });
-          }
-        });
+      channel.subscribe((status) => {
+        Logger.debug('Subscription status', { sessionId, status });
+      });
 
       return () => {
-        Logger.debug('Cleaning up subscription', { sessionId });
-        supabase.removeChannel(channel);
+        channel.unsubscribe();
       };
     };
 
-    const cleanup = setupSubscription();
-
-    // Cleanup subscription on unmount or when sessionId changes
-    return () => {
-      Logger.debug('Running cleanup', { sessionId });
-      cleanup();
-    };
-  }, [sessionId]);
+    setupSubscription();
+  }, [sessionId, supabase]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -559,7 +575,7 @@ export function UploadForm() {
             <div className="relative">
               <Input
                 type="file"
-                accept=".csv"
+                accept=".csv,text/csv"
                 onChange={handleFileChange}
                 ref={fileInputRef}
                 key={fileKey}

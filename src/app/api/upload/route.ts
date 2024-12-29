@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server';
 import Papa from 'papaparse';
-import { supabase } from '@/lib/supabase';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validateRecord, validateGender, validateStatus, normalizeNameForDb, cleanupText } from '@/lib/validation';
 import { Database } from '@/lib/database.types';
 import Logger, { LogContext } from "@/lib/logger";
+
+// Initialize server-side Supabase client
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  }
+);
 
 // Helper function to sanitize file name for storage
 function sanitizeFileName(fileName: string): string {
@@ -18,6 +29,9 @@ function cleanCsvValue(value: string): string {
   return value ? value.trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ') : '';
 }
 
+export const runtime = 'edge';
+export const maxDuration = 300; // 5 minutes
+
 export async function POST(req: Request) {
   let sessionId: string | undefined = undefined;
 
@@ -27,192 +41,302 @@ export async function POST(req: Request) {
     const file = formData.get('file') as File;
     const organization = formData.get('organization') as string;
 
-    const context: LogContext = {};
-    if (organization) {
-      context.organization = organization;
-    }
-    Logger.setContext(context);
-    Logger.debug('Received file', { 
-      fileName: file?.name,
-      fileType: file?.type,
-      fileSize: file?.size 
-    });
-
     if (!file || !organization) {
-      Logger.error('Missing required fields', { 
-        hasFile: !!file, 
-        hasOrganization: !!organization 
-      });
-      return NextResponse.json({ error: 'File and organization are required' }, { status: 400 });
+      throw new Error('File and organization are required');
     }
 
-    // Verify file type
-    if (!file.name.toLowerCase().endsWith('.csv')) {
-      Logger.error('Invalid file type', { fileType: file.type });
-      return NextResponse.json({ error: 'Only CSV files are allowed' }, { status: 400 });
-    }
+    Logger.info(`Received file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+    Logger.info(`Organization: ${organization}`);
 
-    Logger.info('Creating upload session');
+    const context: LogContext = { organization };
+
     // Create upload session
+    Logger.info('Creating upload session', context);
     const { data: session, error: sessionError } = await supabase
       .from('upload_sessions')
       .insert({
+        organization,
         file_name: file.name,
         file_size: file.size,
-        mime_type: 'text/csv',
-        organization: organization,
-        status: 'pending',
+        mime_type: file.type,
+        uploaded_by: 'anonymous',
+        status: 'processing',
         total_records: 0,
         processed_records: 0,
         valid_records: 0,
         invalid_records: 0,
         duplicate_records: 0,
         skipped_duplicates: 0,
-        errors: [] as { record: string, error: string, type: string }[],
-        processing_details: {},
-        error_message: null
+        errors: [],
+        processing_details: {
+          current_index: 0,
+          total: 0
+        }
       })
       .select()
       .single();
 
-    if (sessionError || !session) {
-      Logger.error('Error creating upload session', { error: sessionError });
-      return NextResponse.json({ error: 'Failed to create upload session' }, { status: 500 });
+    if (sessionError) {
+      Logger.error('Failed to create upload session', { error: sessionError });
+      throw new Error(`Failed to create upload session: ${sessionError.message}`);
+    }
+
+    if (!session) {
+      Logger.error('No session data returned');
+      throw new Error('Failed to create upload session: No session data returned');
     }
 
     sessionId = session.id;
-    if (sessionId) {
-      Logger.setContext({ sessionId });
-    }
-    Logger.info('Upload session created', { sessionId });
+    Logger.info(`Created upload session: ${sessionId}`, context);
 
-    // Sanitize organization name and file name for storage
-    const sanitizedOrg = sanitizeFileName(organization);
-    const timestamp = new Date().getTime();
-    const sanitizedFileName = sanitizeFileName(file.name);
-    const storageFileName = `${sanitizedOrg}/${timestamp}_${sanitizedFileName}`;
+    // Upload file to storage with correct MIME type
+    const fileName = `${sanitizeFileName(organization)}/${Date.now()}_${sanitizeFileName(file.name)}`;
+    Logger.info(`Uploading file to storage: ${fileName}`, context);
 
-    // Get file buffer for upload
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    // Convert file to text and create a new Blob with correct MIME type
+    const fileContent = await file.text();
+    const csvBlob = new Blob([fileContent], { type: 'text/csv' });
 
-    Logger.info('Uploading file to storage', { 
-      fileName: storageFileName,
-      size: fileBuffer.length 
-    });
-
-    // Upload file to Supabase Storage
-    const { error: uploadError } = await supabase
+    const { data: uploadData, error: uploadError } = await supabase
       .storage
       .from('csv-uploads')
-      .upload(storageFileName, fileBuffer, {
+      .upload(fileName, csvBlob, {
+        contentType: 'text/csv',
         cacheControl: '3600',
-        upsert: false,
-        contentType: 'text/csv'
+        upsert: false
       });
 
     if (uploadError) {
-      Logger.error('Error uploading file', { 
-        error: uploadError,
-        sessionId 
-      });
-
-      await supabase
-        .from('upload_sessions')
-        .update({
-          status: 'failed',
-          error_message: uploadError.message
-        })
-        .eq('id', sessionId);
-
-      return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
+      Logger.error('Failed to upload file to storage', { error: uploadError });
+      throw new Error(`Failed to upload file: ${uploadError.message}`);
     }
 
-    Logger.info('File uploaded successfully', { 
-      fileName: storageFileName,
-      sessionId 
-    });
+    // Get public URL
+    const { data: { publicUrl } } = supabase
+      .storage
+      .from('csv-uploads')
+      .getPublicUrl(fileName);
 
-    // Parse CSV file
-    const csvContent = await file.text();
-    const { data: records, errors: parseErrors } = Papa.parse(csvContent, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string) => header.toLowerCase().trim()
-    });
-
-    if (parseErrors?.length > 0) {
-      Logger.error('CSV parsing errors', { 
-        errors: parseErrors,
-        sessionId 
-      });
-
-      await supabase
-        .from('upload_sessions')
-        .update({
-          status: 'failed',
-          error_message: 'Failed to parse CSV file',
-          errors: parseErrors.map(error => ({
-            record: `Row ${(error.row ?? 0) + 2}`,
-            error: error.message,
-            type: 'parse_error'
-          }))
-        })
-        .eq('id', sessionId);
-
-      return NextResponse.json({ error: 'Failed to parse CSV file' }, { status: 400 });
-    }
-
-    Logger.info('CSV parsed successfully', { 
-      recordCount: records.length,
-      sessionId 
-    });
-
-    // Update session with total records
-    await supabase
+    // Update session with file URL
+    const { error: urlUpdateError } = await supabase
       .from('upload_sessions')
       .update({
-        total_records: records.length,
-        status: 'processing'
+        file_url: publicUrl
       })
       .eq('id', sessionId);
 
-    // Process records in the background
-    processRecords(records, organization, sessionId!, supabase);
+    if (urlUpdateError) {
+      Logger.error('Failed to update session with file URL', { error: urlUpdateError });
+      throw new Error(`Failed to update session with file URL: ${urlUpdateError.message}`);
+    }
 
-    return NextResponse.json({
-      message: 'Upload started',
-      sessionId,
-      totalRecords: records.length
-    }, { status: 200 });
+    Logger.info(`File uploaded successfully: ${publicUrl}`, context);
+
+    // Parse CSV (we already have the content)
+    const parseResult = Papa.parse(fileContent, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase()
+    });
+
+    if (parseResult.errors.length > 0) {
+      Logger.error('CSV parsing errors', { errors: parseResult.errors });
+      throw new Error(`Failed to parse CSV: ${parseResult.errors[0].message}`);
+    }
+
+    const records = parseResult.data as Record<string, string>[];
+    Logger.info(`Parsed ${records.length} records`, context);
+
+    // Process records in chunks
+    const CHUNK_SIZE = 10;
+    let validRecords = 0;
+    let invalidRecords = 0;
+    let errors: { record: string; errors: { message: string; type: string; }[]; }[] = [];
+
+    // Initial session update with total records
+    await supabase
+      .from('upload_sessions')
+      .update({
+        status: 'processing',
+        total_records: records.length,
+        valid_records: 0,
+        invalid_records: 0,
+        processed_records: 0,
+        processing_details: {
+          current_index: 0,
+          total: records.length
+        }
+      })
+      .eq('id', sessionId);
+
+    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+      const chunk = records.slice(i, i + CHUNK_SIZE);
+      Logger.info(`Processing chunk ${i / CHUNK_SIZE + 1}/${Math.ceil(records.length / CHUNK_SIZE)}`, context);
+
+      for (const record of chunk) {
+        try {
+          const cleanedRecord = {
+            full_name: normalizeNameForDb(record.full_name),
+            source_organization: organization,
+            gender: validateGender(record.gender),
+            status: validateStatus(record.status),
+            original_name: record.full_name,
+            date_of_detention: record.date_of_detention || null,
+            last_update_date: new Date().toISOString(),
+            last_seen_location: cleanupText(record.last_seen_location) || cleanupText(record.place_of_detention) || '',
+            detention_facility: cleanupText(record.detention_facility) || cleanupText(record.place_of_detention) || '',
+            physical_description: cleanupText(record.physical_description) || '',
+            contact_info: cleanupText(record.contact_info) || '',
+            additional_notes: cleanupText(record.notes) || '',
+            age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null,
+            upload_session_id: sessionId
+          };
+
+          const validation = validateRecord(cleanedRecord);
+          if (!validation.isValid) {
+            invalidRecords++;
+            errors.push({
+              record: cleanedRecord.full_name || 'Unknown',
+              errors: validation.errors.map(error => ({
+                message: error,
+                type: error.includes('مطلوب') ? 'missing_required' :
+                      error.includes('تاريخ') ? 'invalid_date' :
+                      error.includes('العمر') ? 'invalid_age' :
+                      error.includes('الجنس') ? 'invalid_gender' :
+                      error.includes('الحالة') ? 'invalid_status' : 'other'
+              }))
+            });
+          } else {
+            const { error: insertError } = await supabase
+              .from('detainees')
+              .insert(cleanedRecord);
+
+            if (insertError) {
+              invalidRecords++;
+              errors.push({
+                record: cleanedRecord.full_name || 'Unknown',
+                errors: [{
+                  message: insertError.message,
+                  type: 'database_error'
+                }]
+              });
+            } else {
+              validRecords++;
+            }
+          }
+
+          // Update session with progress after each record
+          await supabase
+            .from('upload_sessions')
+            .update({
+              processed_records: i + chunk.indexOf(record) + 1,
+              current_record: record.full_name || 'Unknown',
+              valid_records: validRecords,
+              invalid_records: invalidRecords,
+              errors: errors,
+              processing_details: {
+                current_index: i + chunk.indexOf(record) + 1,
+                current_name: record.full_name || 'Unknown',
+                total: records.length
+              }
+            })
+            .eq('id', sessionId);
+
+          Logger.debug('Record processed', { 
+            name: cleanedRecord.full_name,
+            recordNumber: i + chunk.indexOf(record) + 1,
+            valid: validRecords,
+            invalid: invalidRecords,
+            total: records.length
+          });
+
+        } catch (error) {
+          Logger.error('Error processing record', {
+            error,
+            record,
+            index: i + chunk.indexOf(record)
+          });
+
+          invalidRecords++;
+          errors.push({
+            record: record.full_name || 'Unknown',
+            errors: [{
+              message: error instanceof Error ? error.message : 'Unknown error',
+              type: 'processing_error'
+            }]
+          });
+
+          // Update session with error
+          await supabase
+            .from('upload_sessions')
+            .update({
+              processed_records: i + chunk.indexOf(record) + 1,
+              current_record: record.full_name || 'Unknown',
+              valid_records: validRecords,
+              invalid_records: invalidRecords,
+              errors: errors,
+              processing_details: {
+                current_index: i + chunk.indexOf(record) + 1,
+                current_name: record.full_name || 'Unknown',
+                total: records.length
+              }
+            })
+            .eq('id', sessionId);
+        }
+      }
+    }
+
+    // Final session update with completion status
+    const { error: completeError } = await supabase
+      .from('upload_sessions')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        processed_records: records.length,
+        valid_records: validRecords,
+        invalid_records: invalidRecords,
+        errors: errors,
+        processing_details: {
+          current_index: records.length,
+          total: records.length
+        }
+      })
+      .eq('id', sessionId);
+
+    if (completeError) {
+      Logger.error('Failed to complete session', { error: completeError });
+      throw new Error(`Failed to complete session: ${completeError.message}`);
+    }
+
+    Logger.info('Processing completed', {
+      ...context,
+      totalRecords: records.length,
+      validRecords,
+      invalidRecords,
+      errors: errors.length
+    });
+
+    return NextResponse.json({ success: true, sessionId });
 
   } catch (error) {
-    const errorContext: LogContext = {};
-    if (sessionId) {
-      errorContext.sessionId = sessionId;
-    }
-    Logger.error('Upload error', { 
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack
-      } : error,
-      ...errorContext
-    });
-    
-    // If we have a session ID, update it with the error
+    Logger.error('Upload process error', { error });
+
+    // If we have a session ID, update it with error status
     if (sessionId) {
       await supabase
         .from('upload_sessions')
         .update({
           status: 'failed',
-          error_message: error instanceof Error ? error.message : 'Unknown error'
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          completed_at: new Date().toISOString()
         })
         .eq('id', sessionId);
     }
 
-    return NextResponse.json({
-      error: 'Upload failed',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
 
@@ -258,7 +382,6 @@ async function processRecords(
           // Optional fields with defaults
           gender: validateGender(record.gender),
           status: validateStatus(record.status),
-          organization: organization,
           original_name: record.full_name,
 
           // Optional date fields

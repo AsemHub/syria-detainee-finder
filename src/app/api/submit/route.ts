@@ -121,10 +121,8 @@ export async function POST(request: Request) {
           status: validatedData.status,
           contact_info: validatedData.contact_info,
           additional_notes: validatedData.additional_notes ?? null,
-          created_at: now,
           last_update_date: now,
-          source_organization: 'Public', // Source organization is always 'Public'
-          organization: 'Public' // Set organization to 'Public' for public submissions
+          source_organization: 'Public' // Source organization is always 'Public' for public submissions
         };
 
         // Insert the data
