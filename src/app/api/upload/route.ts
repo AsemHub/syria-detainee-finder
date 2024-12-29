@@ -10,10 +10,10 @@ export const runtime = 'nodejs'; // Use Node.js runtime instead of Edge
 export const maxDuration = 60; // Set maximum duration to 60 seconds
 export const preferredRegion = 'fra1'; // Deploy to Frankfurt for EU users
 
-// Initialize server-side Supabase client
+// Initialize server-side Supabase client with service role key
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use service role key for API routes
   {
     auth: {
       persistSession: false,
@@ -36,7 +36,7 @@ function cleanCsvValue(value: string): string {
 
 // CORS headers configuration
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? '*' : 'https://syrianrevolution.eu',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
