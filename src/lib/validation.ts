@@ -186,66 +186,42 @@ const STATUS_VALUES = [
 export function validateRecord(record: any): ValidationResult {
   const errors: string[] = [];
 
-  // Required fields
+  // Required fields validation with more descriptive messages
   if (!record.full_name?.trim()) {
-    errors.push('الاسم الكامل مطلوب');
+    errors.push('الاسم الكامل مطلوب - الرجاء إدخال الاسم الكامل للشخص');
   }
 
-  if (!record.source_organization?.trim()) {
-    errors.push('اسم المنظمة مطلوب');
-  }
-
-  // Location and contact validation
   if (!record.last_seen_location?.trim()) {
-    errors.push('مكان آخر مشاهدة مطلوب');
+    errors.push('مكان آخر مشاهدة مطلوب - الرجاء تحديد آخر مكان تم فيه رؤية الشخص');
   }
 
   if (!record.contact_info?.trim()) {
-    errors.push('معلومات الاتصال مطلوبة');
+    errors.push('معلومات الاتصال مطلوبة - الرجاء إدخال رقم هاتف أو معلومات اتصال أخرى');
   }
 
-  // Date validation - now required
-  const dateStr = record.date_of_detention;
-  if (!dateStr) {
-    errors.push('تاريخ الاعتقال مطلوب');
-  } else if (typeof dateStr === 'string') {
-    // Only try to parse if it's not already parsed
-    const parsedDate = parseDate(dateStr);
-    if (!parsedDate) {
-      errors.push('تاريخ الاعتقال غير صالح');
-    } else {
-      record.date_of_detention = parsedDate;
-    }
+  if (!record.date_of_detention) {
+    errors.push('تاريخ الاعتقال مطلوب - الرجاء إدخال تاريخ الاعتقال بصيغة YYYY-MM-DD');
   }
 
-  // Age validation - now required and more strict
-  const age = record.age_at_detention;
-  if (age === undefined || age === null || age === '') {
-    errors.push('العمر عند الاعتقال مطلوب');
-  } else if (!validateAge(age)) {
-    errors.push('العمر عند الاعتقال غير صالح');
+  // Age validation with better error messages
+  if (record.age_at_detention === null || record.age_at_detention === undefined || record.age_at_detention === '') {
+    errors.push('العمر عند الاعتقال مطلوب - الرجاء إدخال عمر الشخص عند الاعتقال');
+  } else if (!validateAge(record.age_at_detention)) {
+    errors.push('العمر عند الاعتقال غير صالح - يجب أن يكون رقماً بين 0 و 120');
   }
 
-  // Gender validation - now required
-  const gender = record.gender?.trim();
-  if (!gender) {
-    errors.push('الجنس مطلوب');
-  } else {
-    record.gender = validateGender(gender);
-    if (record.gender === 'unknown') {
-      errors.push('الجنس غير صالح');
-    }
+  // Gender validation with clearer messages
+  if (!record.gender) {
+    errors.push('الجنس مطلوب - الرجاء تحديد جنس الشخص (ذكر/أنثى)');
+  } else if (!['male', 'female', 'unknown'].includes(record.gender)) {
+    errors.push('قيمة الجنس غير صالحة - الرجاء استخدام "ذكر" أو "أنثى"');
   }
 
-  // Status validation - now required
-  const status = record.status?.trim();
-  if (!status) {
-    errors.push('الحالة مطلوبة');
-  } else {
-    record.status = validateStatus(status);
-    if (record.status === 'unknown') {
-      errors.push('الحالة غير صالحة');
-    }
+  // Status validation with clearer messages
+  if (!record.status) {
+    errors.push('الحالة مطلوبة - الرجاء تحديد حالة الشخص (معتقل/مفقود)');
+  } else if (!['in_custody', 'missing', 'deceased', 'released', 'unknown'].includes(record.status)) {
+    errors.push('قيمة الحالة غير صالحة - الرجاء استخدام "معتقل" أو "مفقود"');
   }
 
   return {

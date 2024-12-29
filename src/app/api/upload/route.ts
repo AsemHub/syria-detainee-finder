@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import Papa from 'papaparse';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { validateRecord, validateGender, validateStatus, normalizeNameForDb, cleanupText, parseDate } from '@/lib/validation';
-import { Database } from '@/lib/database.types';
+import { Database, DetaineeStatus, DetaineeGender } from '@/lib/database.types';
 import Logger, { LogContext } from "@/lib/logger";
+
+// Configure as serverless function with increased memory and timeout
+export const runtime = 'nodejs'; // Use Node.js runtime instead of Edge
+export const maxDuration = 60; // Set maximum duration to 60 seconds
+export const preferredRegion = 'fra1'; // Deploy to Frankfurt for EU users
 
 // Initialize server-side Supabase client
 const supabase = createClient<Database>(
@@ -147,6 +152,99 @@ export async function POST(req: Request) {
     // At this point, TypeScript knows fileEntry is a File-like object
     const file = fileEntry;
 
+    // Validate file type
+    const validMimeTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',  // Excel CSV files
+      'application/csv',
+      'application/x-csv',
+      'text/x-csv',
+      'text/comma-separated-values'
+    ];
+
+    if (!validMimeTypes.includes(file.type)) {
+      Logger.error('Invalid file type', { type: file.type });
+      return NextResponse.json(
+        { error: 'Invalid file type. Please upload a CSV file.' },
+        { status: 400 }
+      );
+    }
+
+    try {
+      const fileName = `${sessionId}_${file.name}`;
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+      // Force the content type to text/csv for Supabase storage
+      const { error: uploadError } = await supabase.storage
+        .from('csv-uploads')
+        .upload(fileName, fileBuffer, {
+          contentType: 'text/csv',  // Always use text/csv for Supabase storage
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        Logger.error('Failed to upload file to storage', { 
+          error: uploadError,
+          fileName,
+          sessionId 
+        });
+        
+        await updateSession(supabase, sessionId, {
+          status: 'failed',
+          errors: [{
+            record: '',
+            errors: [{ 
+              message: 'Failed to upload file to storage: ' + uploadError.message,
+              type: 'error'
+            }]
+          }]
+        });
+        
+        return NextResponse.json(
+          { error: 'Failed to upload file to storage', details: uploadError.message },
+          { status: 500, headers }
+        );
+      }
+
+      // Get public URL for the uploaded file
+      const { data: { publicUrl } } = supabase.storage
+        .from('csv-uploads')
+        .getPublicUrl(fileName);
+
+      // Update session with file URL
+      await updateSession(supabase, sessionId, {
+        file_url: publicUrl
+      });
+
+      Logger.debug('File uploaded to storage', { 
+        fileName,
+        publicUrl,
+        sessionId
+      });
+    } catch (error) {
+      Logger.error('Unexpected error uploading to storage', {
+        error,
+        sessionId
+      });
+      
+      await updateSession(supabase, sessionId, {
+        status: 'failed',
+        errors: [{
+          record: '',
+          errors: [{ 
+            message: 'Unexpected error uploading file: ' + (error instanceof Error ? error.message : 'Unknown error'),
+            type: 'error'
+          }]
+        }]
+      });
+      
+      return NextResponse.json(
+        { error: 'Unexpected error uploading file' },
+        { status: 500, headers }
+      );
+    }
+
     // Read file content as text
     const fileContent = await file.text();
     
@@ -154,7 +252,20 @@ export async function POST(req: Request) {
     const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header) => header.trim().toLowerCase(),
+      transformHeader: (header) => {
+        const headerMap: { [key: string]: string } = {
+          'الاسم الكامل': 'full_name',
+          'الجنس': 'gender',
+          'العمر عند الاعتقال': 'age_at_detention',
+          'تاريخ الاعتقال': 'detention_date',
+          'مكان آخر مشاهدة': 'last_seen_location',
+          'الحالة': 'status',
+          'معلومات الاتصال': 'contact_info',
+          'ملاحظات': 'notes'
+        };
+        const normalizedHeader = header.trim();
+        return headerMap[normalizedHeader] || normalizedHeader;
+      },
       transform: (value) => cleanCsvValue(value),
     });
 
@@ -175,8 +286,20 @@ export async function POST(req: Request) {
       );
     }
 
+    // Transform records to match database schema
+    const transformedRecords = records.map((record: any) => ({
+      full_name: record.full_name,
+      gender: record.gender,
+      age_at_detention: record.age_at_detention,
+      detention_date: record.detention_date,
+      last_seen_location: record.last_seen_location,
+      status: record.status,
+      contact_info: record.contact_info,
+      notes: record.notes
+    }));
+
     // Start processing records in the background
-    processRecords(records, organization, sessionId, supabase);
+    processRecords(transformedRecords, organization, sessionId, supabase);
 
     return NextResponse.json(
       { message: 'Upload started successfully', sessionId },
@@ -211,6 +334,34 @@ async function processRecords(
   let duplicateRecords = 0;
   const processedNames = new Set<string>();
 
+  // Arabic field name mapping
+  const FIELD_MAPPING: Record<string, string> = {
+    'الاسم الكامل': 'full_name',
+    'الجنس': 'gender',
+    'العمر عند الاعتقال': 'age_at_detention',
+    'تاريخ الاعتقال': 'detention_date',
+    'مكان آخر مشاهدة': 'last_seen_location',
+    'الحالة': 'status',
+    'معلومات الاتصال': 'contact_info',
+    'ملاحظات': 'notes'
+  };
+
+  // Arabic status mapping
+  const STATUS_MAPPING: Record<string, DetaineeStatus> = {
+    'معتقل': 'in_custody',
+    'مفقود': 'missing',
+    'متوفى': 'deceased',
+    'مطلق سراح': 'released',
+    'غير معروف': 'unknown'
+  };
+
+  // Arabic gender mapping
+  const GENDER_MAPPING: Record<string, DetaineeGender> = {
+    'ذكر': 'male',
+    'أنثى': 'female',
+    'غير معروف': 'unknown'
+  };
+
   try {
     // Initial session update
     await updateSession(supabase, sessionId, {
@@ -224,29 +375,29 @@ async function processRecords(
 
         // Process record logic...
         const cleanedRecord = {
-          // Required fields
-          full_name: normalizeNameForDb(record.full_name),
+          // Map Arabic field names to English
+          full_name: normalizeNameForDb(record[FIELD_MAPPING['الاسم الكامل']]),
           source_organization: organization,
-          upload_session_id: sessionId, // Link to upload session
+          upload_session_id: sessionId,
 
-          // Optional fields with defaults
-          gender: record.gender,
-          status: record.status,
-          original_name: record.full_name,
+          // Map gender and status to English enums
+          gender: GENDER_MAPPING[record[FIELD_MAPPING['الجنس']]] || 'unknown',
+          status: STATUS_MAPPING[record[FIELD_MAPPING['الحالة']]] || 'unknown',
+          original_name: record[FIELD_MAPPING['الاسم الكامل']],
 
-          // Optional date fields
-          date_of_detention: record.date_of_detention ? parseDate(record.date_of_detention) : null,
+          // Format date properly
+          date_of_detention: record[FIELD_MAPPING['تاريخ الاعتقال']] ? 
+            parseDate(record[FIELD_MAPPING['تاريخ الاعتقال']]) : null,
           last_update_date: new Date().toISOString(),
 
           // Optional text fields
-          last_seen_location: cleanupText(record.last_seen_location) || cleanupText(record.place_of_detention) || '',
-          detention_facility: cleanupText(record.detention_facility) || cleanupText(record.place_of_detention) || '',
-          physical_description: cleanupText(record.physical_description) || '',
-          contact_info: cleanupText(record.contact_info) || '',
-          additional_notes: cleanupText(record.notes) || '',
+          last_seen_location: cleanupText(record[FIELD_MAPPING['مكان آخر مشاهدة']]) || '',
+          contact_info: cleanupText(record[FIELD_MAPPING['معلومات الاتصال']]) || '',
+          additional_notes: cleanupText(record[FIELD_MAPPING['ملاحظات']]) || '',
 
           // Optional numeric fields
-          age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null
+          age_at_detention: record[FIELD_MAPPING['العمر عند الاعتقال']] ? 
+            parseInt(record[FIELD_MAPPING['العمر عند الاعتقال']]) : null
         };
 
         // Check for duplicates within this upload
