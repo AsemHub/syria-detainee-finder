@@ -9,6 +9,7 @@ export class UploadSessionManager {
 
   async createSession(file: File, organization: string): Promise<UploadSession> {
     try {
+      // First create the session
       const { data: session, error } = await this.supabase
         .from('upload_sessions')
         .insert({
@@ -37,9 +38,66 @@ export class UploadSessionManager {
       }
 
       Logger.debug('Upload session created', { sessionId: session.id });
+
+      // Create form data for the file upload
+      const formData = new FormData();
+      
+      // Add the file directly without conversion
+      formData.append('file', file);
+      formData.append('organization', organization);
+      formData.append('sessionId', session.id);
+
+      // Log the FormData contents
+      const formDataEntries: Record<string, any> = {};
+      formData.forEach((value, key) => {
+        formDataEntries[key] = value instanceof Blob ? {
+          type: value.type,
+          size: value.size,
+          name: value instanceof File ? value.name : 'blob'
+        } : value;
+      });
+      Logger.debug('FormData being sent', { formData: formDataEntries });
+
+      // Upload the file using the API route
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        Logger.error('Failed to upload file', { 
+          status: response.status,
+          statusText: response.statusText,
+          responseData
+        });
+        
+        // Update session status on error
+        await this.supabase
+          .from('upload_sessions')
+          .update({
+            status: 'failed',
+            errors: [{
+              record: '',
+              errors: [{ 
+                message: responseData.error || responseData.message || 'Failed to upload file',
+                type: 'error'
+              }]
+            }]
+          })
+          .eq('id', session.id);
+          
+        throw new Error(responseData.error || responseData.message || 'Failed to upload file');
+      }
+
       return session;
     } catch (error) {
-      Logger.error('Error creating upload session', { error });
+      Logger.error('Error creating upload session', { 
+        error,
+        stack: error instanceof Error ? error.stack : undefined,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw error;
     }
   }

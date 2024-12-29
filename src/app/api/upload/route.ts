@@ -29,9 +29,6 @@ function cleanCsvValue(value: string): string {
   return value ? value.trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ') : '';
 }
 
-export const runtime = 'edge';
-export const maxDuration = 300; // 5 minutes
-
 // CORS headers configuration
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,112 +43,155 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   try {
+    // Add CORS headers to the response
+    const headers = {
+      ...corsHeaders,
+      'Access-Control-Allow-Origin': '*',
+    };
+
+    // Log request details
+    Logger.debug('Upload request received', {
+      method: req.method,
+      contentType: req.headers.get('content-type'),
+      url: req.url
+    });
+
     const formData = await req.formData();
     
+    // Log FormData entries
+    const formDataEntries: Record<string, any> = {};
+    formData.forEach((value, key) => {
+      if (typeof value === 'object' && value !== null && 'name' in value && 'type' in value) {
+        formDataEntries[key] = {
+          type: value.type,
+          size: 'size' in value ? value.size : 'N/A',
+          name: value.name
+        };
+      } else {
+        formDataEntries[key] = value;
+      }
+    });
+    Logger.debug('FormData contents', { formData: formDataEntries });
+
     // Get and validate organization
     const organization = formData.get('organization')?.toString();
     if (!organization) {
-      throw new Error('Organization is required');
+      Logger.error('Organization missing from request');
+      return NextResponse.json(
+        { error: 'Organization is required' },
+        { status: 400, headers }
+      );
     }
 
     // Get and validate session ID
     const sessionId = formData.get('sessionId')?.toString();
     if (!sessionId) {
-      throw new Error('Session ID is required');
+      Logger.error('Session ID missing from request');
+      return NextResponse.json(
+        { error: 'Session ID is required' },
+        { status: 400, headers }
+      );
     }
 
     // Get and validate file
-    const file = formData.get('file');
+    const fileEntry = formData.get('file');
     
+    // Type guard function to check if value is a File-like object
+    const isFileLike = (value: any): value is File => {
+      return (
+        value !== null &&
+        typeof value === 'object' &&
+        'name' in value &&
+        'type' in value &&
+        'text' in value &&
+        typeof value.text === 'function'
+      );
+    };
+    
+    // Log the type information
     Logger.debug('File upload details', {
-      fileType: file ? typeof file : 'undefined',
-      isFile: file instanceof File,
-      fileName: file instanceof File ? file.name : 'N/A',
-      fileSize: file instanceof File ? file.size : 'N/A',
-      contentType: file instanceof File ? file.type : 'N/A'
+      fileEntryType: fileEntry ? typeof fileEntry : 'undefined',
+      hasRequiredProps: fileEntry ? isFileLike(fileEntry) : false,
+      fileValue: fileEntry ? {
+        type: isFileLike(fileEntry) ? fileEntry.type : typeof fileEntry,
+        size: isFileLike(fileEntry) ? fileEntry.size : 'N/A',
+        name: isFileLike(fileEntry) ? fileEntry.name : 'N/A'
+      } : 'undefined',
+      sessionId,
+      organization
     });
 
-    if (!file) {
-      throw new Error('File is required');
-    }
-    
-    if (!(file instanceof Blob)) {
-      throw new Error('Invalid file format: File must be a valid Blob');
-    }
-
-    // Convert Blob to File if needed
-    const fileToProcess = file instanceof File ? file : new File([file], 'uploaded.csv', {
-      type: 'text/csv'
-    });
-
-    if (fileToProcess.size === 0) {
-      throw new Error('File is empty');
-    }
-
-    Logger.info('Upload started', {
-      organization,
-      fileName: fileToProcess.name,
-      fileSize: fileToProcess.size,
-      sessionId
-    });
-
-    // Parse CSV file
-    const csvContent = await fileToProcess.text();
-    const { data: records, errors: parseErrors } = Papa.parse(csvContent, {
-      header: true,
-      skipEmptyLines: true,
-      transform: cleanCsvValue
-    });
-
-    if (parseErrors.length > 0) {
-      Logger.error('CSV parsing failed', {
-        errors: parseErrors.map(e => e.message),
-        organization,
-        sessionId,
-        firstLines: csvContent.split('\n').slice(0, 3).join('\n')
+    if (!fileEntry || !isFileLike(fileEntry)) {
+      const error = !fileEntry ? 'File is required' : 'Invalid file format - expected a File';
+      Logger.error('File validation failed', {
+        error,
+        fileEntryType: fileEntry ? typeof fileEntry : 'undefined',
+        hasRequiredProps: fileEntry ? isFileLike(fileEntry) : false
       });
-      throw new Error('Failed to parse CSV file: ' + parseErrors[0].message);
-    }
-
-    if (records.length === 0) {
-      throw new Error('CSV file contains no valid records');
-    }
-
-    // Start background processing
-    processRecords(records, organization, sessionId, supabase).catch(async (error) => {
-      Logger.error('Background processing failed', { 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        sessionId 
-      });
+      
+      // Update session status
       await updateSession(supabase, sessionId, {
         status: 'failed',
         errors: [{
           record: '',
-          errors: [{ message: error instanceof Error ? error.message : 'Unknown error', type: 'error' }]
+          errors: [{ message: error, type: 'error' }]
         }]
       });
-    });
+      
+      return NextResponse.json(
+        { error, message: `Upload failed with error: ${error}` },
+        { status: 400, headers }
+      );
+    }
 
-    const response = NextResponse.next();
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-      response.headers.set(key, value);
-    });
+    // At this point, TypeScript knows fileEntry is a File-like object
+    const file = fileEntry;
 
-    return NextResponse.json({ 
-      message: 'File uploaded successfully',
-      sessionId
-    }, { headers: corsHeaders });
-
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Read file content as text
+    const fileContent = await file.text();
     
-    Logger.error('Upload failed', {
-      error: errorMessage,
-      message: 'Upload failed with error: ' + errorMessage
+    // Parse CSV
+    const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim().toLowerCase(),
+      transform: (value) => cleanCsvValue(value),
     });
+
+    if (parseErrors.length > 0) {
+      Logger.error('CSV parsing failed', { parseErrors });
+      
+      await updateSession(supabase, sessionId, {
+        status: 'failed',
+        errors: parseErrors.map(err => ({
+          record: '',
+          errors: [{ message: err.message, type: 'error' }]
+        }))
+      });
+      
+      return NextResponse.json(
+        { error: 'Failed to parse CSV file', parseErrors },
+        { status: 400, headers }
+      );
+    }
+
+    // Start processing records in the background
+    processRecords(records, organization, sessionId, supabase);
 
     return NextResponse.json(
-      { error: errorMessage },
+      { message: 'Upload started successfully', sessionId },
+      { status: 200, headers }
+    );
+
+  } catch (error) {
+    Logger.error('Upload failed', { 
+      error,
+      stack: error instanceof Error ? error.stack : undefined,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+    
+    return NextResponse.json(
+      { error: 'Upload failed', message: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500, headers: corsHeaders }
     );
   }

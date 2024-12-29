@@ -18,10 +18,13 @@ export function middleware(request: NextRequest) {
     });
   }
 
-  // Handle actual requests
-  const response = NextResponse.next();
+  // For POST requests to /api/upload, skip middleware to preserve request body
+  if (request.method === 'POST' && request.nextUrl.pathname === '/api/upload') {
+    return NextResponse.next();
+  }
 
-  // Add CORS headers
+  // For other requests, add CORS headers
+  const response = NextResponse.next();
   response.headers.set('Access-Control-Allow-Origin', origin);
   response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');

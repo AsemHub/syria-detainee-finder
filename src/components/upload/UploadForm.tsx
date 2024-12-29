@@ -86,7 +86,7 @@ export function UploadForm() {
     setCurrentRecord(null);
 
     try {
-      // Create session first
+      // Create session and upload file
       const session = await sessionManager.createSession(selectedFile, data.organization);
       setSessionId(session.id);
 
@@ -105,27 +105,6 @@ export function UploadForm() {
         onCurrentRecord: setCurrentRecord
       });
 
-      // Start file upload
-      const formData = new FormData();
-      
-      // Ensure file is sent as a Blob
-      const fileBlob = new Blob([await selectedFile.arrayBuffer()], { type: 'text/csv' });
-      formData.append('file', fileBlob, selectedFile.name);
-      formData.append('organization', data.organization);
-      formData.append('sessionId', session.id);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Upload failed');
-      }
-
-      setStatus('processing');
     } catch (error) {
       Logger.error('Upload error:', error);
       setStatus('failed');
