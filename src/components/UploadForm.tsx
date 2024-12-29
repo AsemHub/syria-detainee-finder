@@ -24,12 +24,18 @@ import Papa from 'papaparse';
 import { supabaseClient } from '@/lib/supabase.client'
 import { DocumentationIcon } from "./ui/icons";
 import Logger from "@/lib/logger"
+import { InfoIcon } from "./ui/icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const formSchema = z.object({
   organization: z.string().min(1, {
     message: "الرجاء إدخال اسم المنظمة"
   }),
-  file: z.any()
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -134,7 +140,7 @@ const getErrorTypeTitle = (type: string) => {
       return 'بيانات غير صالحة';
     default:
       return 'أخطاء أخرى';
-  }
+  };
 };
 
 const getErrorMessage = (error: UploadError) => {
@@ -156,7 +162,7 @@ const getErrorMessage = (error: UploadError) => {
       return error.error;
     default:
       return error.error;
-  }
+  };
 };
 
 export function UploadForm() {
@@ -178,6 +184,7 @@ export function UploadForm() {
   const [isUploading, setIsUploading] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
   const [fileKey, setFileKey] = useState(0)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Use the client-side Supabase instance
@@ -187,7 +194,7 @@ export function UploadForm() {
     if (!sessionId) return;
 
     const setupSubscription = () => {
-      Logger.debug('Setting up real-time subscription for session:', sessionId);
+      Logger.debug('Setting up real-time subscription for session', { sessionId });
 
       const channel = supabase
         .channel(`upload_session_${sessionId}`)
@@ -201,7 +208,7 @@ export function UploadForm() {
           },
           (payload) => {
             const data = payload.new as UploadSession;
-            Logger.debug('Session update:', data);
+            Logger.debug('Session update', { sessionId, data });
 
             // Update stats
             setStats({
@@ -233,11 +240,11 @@ export function UploadForm() {
 
             // Update status based on session state
             if (data.status === 'completed') {
-              Logger.debug('Upload completed');
+              Logger.debug('Upload completed', { sessionId });
               setStatus('completed');
               setIsUploading(false);
             } else if (data.status === 'failed') {
-              Logger.debug('Upload failed:', data.error_message);
+              Logger.debug('Upload failed', { sessionId, errorMessage: data.error_message });
               setStatus('failed');
               setIsUploading(false);
               if (data.error_message) {
@@ -256,19 +263,19 @@ export function UploadForm() {
           }
         )
         .subscribe((status) => {
-          Logger.debug('Subscription status:', status);
+          Logger.debug('Subscription status', { sessionId, status });
 
           if (status === 'SUBSCRIBED') {
-            Logger.debug('Successfully subscribed to changes');
+            Logger.debug('Successfully subscribed to changes', { sessionId });
           } else if (status === 'CLOSED') {
-            Logger.debug('Subscription closed');
+            Logger.debug('Subscription closed', { sessionId });
           } else if (status === 'CHANNEL_ERROR') {
-            Logger.error('Channel error');
+            Logger.error('Channel error', { sessionId });
           }
         });
 
       return () => {
-        Logger.debug('Cleaning up subscription');
+        Logger.debug('Cleaning up subscription', { sessionId });
         supabase.removeChannel(channel);
       };
     };
@@ -277,7 +284,7 @@ export function UploadForm() {
 
     // Cleanup subscription on unmount or when sessionId changes
     return () => {
-      Logger.debug('Running cleanup');
+      Logger.debug('Running cleanup', { sessionId });
       cleanup();
     };
   }, [sessionId]);
@@ -286,26 +293,29 @@ export function UploadForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       organization: "",
-      file: undefined
-    }
+    },
   })
 
-  const handleSubmit = async (data: FormData) => {
-    try {
-      setIsUploading(true);
-      setStatus('pending');
-      setErrors([]);
-      setStats({
-        total: 0,
-        valid: 0,
-        invalid: 0,
-        duplicates: 0
-      });
-      setProcessingProgress(0);
-      setCurrentRecord(null);
+  const onSubmit = async (data: FormData) => {
+    if (!selectedFile) {
+      return;
+    }
 
+    setIsUploading(true);
+    setStatus('pending');
+    setErrors([]);
+    setStats({
+      total: 0,
+      valid: 0,
+      invalid: 0,
+      duplicates: 0
+    });
+    setProcessingProgress(0);
+    setCurrentRecord(null);
+    
+    try {
       const formData = new FormData();
-      formData.append('file', data.file);
+      formData.append('file', selectedFile);
       formData.append('organization', data.organization);
 
       const response = await fetch('/api/upload', {
@@ -324,6 +334,11 @@ export function UploadForm() {
       setStatus('processing');
 
       // Subscribe to session updates
+      Logger.debug('Setting up real-time subscription', { 
+        sessionId: responseData.sessionId,
+        organization: data.organization 
+      });
+
       const subscription = supabase
         .channel('upload_session_' + responseData.sessionId)
         .on(
@@ -335,11 +350,17 @@ export function UploadForm() {
             filter: `id=eq.${responseData.sessionId}`
           },
           (payload) => {
-            Logger.debug('Session update:', payload.new);
+            Logger.debug('Session update received', { 
+              sessionId: responseData.sessionId,
+              status: payload.new.status,
+              payload: payload.new 
+            });
+            
             const session = payload.new as UploadSession;
 
             // Update UI based on session status
             if (session.status === 'completed') {
+              Logger.debug('Upload completed', { sessionId: responseData.sessionId });
               setStatus('completed');
               setIsUploading(false);
               setStats({
@@ -348,8 +369,10 @@ export function UploadForm() {
                 invalid: session.invalid_records,
                 duplicates: session.duplicate_records
               });
+              setErrors(session.errors || []);
               subscription.unsubscribe();
             } else if (session.status === 'failed') {
+              Logger.debug('Upload failed', { sessionId: responseData.sessionId, errorMessage: session.error_message });
               setStatus('failed');
               setIsUploading(false);
               setErrors(session.errors || [{
@@ -379,7 +402,7 @@ export function UploadForm() {
       };
 
     } catch (error) {
-      Logger.error('Upload error:', error);
+      Logger.error('Upload error', { error });
       setStatus('failed');
       setErrors([{ 
         record: '', 
@@ -388,16 +411,15 @@ export function UploadForm() {
       }]);
       setIsUploading(false);
     }
-  };
+  }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, onChange: (value: any) => void) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Create a new File object with text/csv MIME type
-      const csvFile = new File([file], file.name, { type: 'text/csv' });
-      onChange(csvFile);
+      setSelectedFile(file);
       setHasFile(true);
     } else {
+      setSelectedFile(null);
       setHasFile(false);
     }
   }
@@ -488,7 +510,7 @@ export function UploadForm() {
           </div>
         </div>
         <div className="text-sm text-muted-foreground mt-2">
-          ملاحظة: يمكنك تنزيل <a href="/api/download-template" className="text-primary hover:underline" download="template.csv">قالب CSV</a> للرجوع إليه.
+          ملاحظة: يمكنك تنزيل <a href="/api/download-template" className="text-primary hover:underline" download="template.csv">قالب CSV</a> للرجوع إليه. يجب أن تكون أسماء الحقول باللغة الإنجليزية فقط.
         </div>
       </div>
       )}
@@ -503,7 +525,7 @@ export function UploadForm() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <FormField
             control={form.control}
             name="organization"
@@ -511,43 +533,33 @@ export function UploadForm() {
               <FormItem>
                 <FormLabel>اسم المنظمة</FormLabel>
                 <FormControl>
-                  <Input placeholder="أدخل اسم المنظمة" {...field} />
+                  <Input {...field} />
                 </FormControl>
                 <FormDescription>
-                  اسم المنظمة التي تقدم المعلومات
+                  أدخل اسم المنظمة التي تنتمي إليها
                 </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          <FormField
-            control={form.control}
-            name="file"
-            render={({ field: { onChange, value, ...field } }) => (
-              <FormItem>
-                <FormLabel>ملف CSV</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Input
-                      key={fileKey}
-                      type="file"
-                      accept=".csv"
-                      ref={fileInputRef}
-                      onChange={(e) => handleFileChange(e, onChange)}
-                      className="cursor-pointer"
-                      name={field.name}
-                      onBlur={field.onBlur}
-                    />
-                  </div>
-                </FormControl>
-                <FormDescription>
-                  اختر ملف CSV يحتوي على معلومات المعتقلين
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {/* File Input outside of form controller */}
+          <div className="space-y-2">
+            <FormLabel>ملف CSV</FormLabel>
+            <div className="relative">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                ref={fileInputRef}
+                key={fileKey}
+                className="cursor-pointer"
+              />
+            </div>
+            <FormDescription className="text-xs">
+              اختر ملف CSV يحتوي على معلومات المعتقلين
+            </FormDescription>
+          </div>
 
           <Button 
             type="submit" 
@@ -587,74 +599,124 @@ export function UploadForm() {
             <Progress value={processingProgress} className="mb-4" />
             
             {/* Live Statistics */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span>إجمالي السجلات:</span>
-                <span className="font-medium">{stats.total}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>السجلات الصالحة:</span>
-                <span className="font-medium text-success">{stats.valid}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>السجلات غير الصالحة:</span>
-                <span className="font-medium text-destructive">{stats.invalid}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>السجلات المكررة:</span>
-                <span className="font-medium text-warning">{stats.duplicates}</span>
-              </div>
-            </div>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Stats Grid - Mobile First */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg bg-muted/30">
+                    <div className="text-sm text-muted-foreground">اجمالي السجلات:</div>
+                    <div className="text-2xl font-bold mt-1">{stats.total}</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
+                    <div className="text-sm text-muted-foreground">السجلات الصالحة:</div>
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+                      {stats.valid}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-sm text-muted-foreground flex items-center gap-1 cursor-help">
+                            <span>السجلات غير الصالحة:</span>
+                            <InfoIcon className="h-4 w-4" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent 
+                          side="top" 
+                          align="start" 
+                          className="bg-popover text-popover-foreground"
+                        >
+                          <p className="text-sm text-right">سجلات تحتوي على خطأ واحد أو أكثر</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+                      {stats.invalid}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/30">
+                    <div className="text-sm text-muted-foreground">السجلات المكررة:</div>
+                    <div className="text-2xl font-bold mt-1">{stats.duplicates}</div>
+                  </div>
+                </div>
 
-            {/* Live Error Details */}
-            {(stats.invalid > 0 || stats.duplicates > 0 || errors.length > 0) && (
-              <div className="flex flex-col gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowErrors(!showErrors)}
-                >
-                  {showErrors ? "إخفاء تفاصيل الأخطاء" : `عرض تفاصيل الأخطاء (${errorCount})`}
-                </Button>
-                {errorCount > 0 && (
-                  <Button
-                    variant="outline"
-                    className="flex items-center justify-center gap-2"
-                    onClick={downloadErrorsReport}
-                  >
-                    <Download className="h-4 w-4" />
-                    تحميل تقرير الأخطاء
-                  </Button>
+                {/* Error Details Section */}
+                {errors && errors.length > 0 && (
+                  <div className="mt-6 space-y-3">
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowErrors(!showErrors)}
+                            className="w-full text-right"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span>عرض تفاصيل الأخطاء ({errors.length})</span>
+                              <InfoIcon className="h-4 w-4" />
+                            </div>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent 
+                          side="top" 
+                          align="center" 
+                          className="bg-popover text-popover-foreground"
+                        >
+                          <p className="text-sm text-right">
+                            تم العثور على {errors.length} خطأ في {stats.invalid} سجل
+                            <br />
+                            بعض السجلات قد تحتوي على أكثر من خطأ
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {showErrors && (
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-2 justify-between items-stretch sm:items-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowErrors(false)}
+                            className="w-full sm:w-auto"
+                          >
+                            إخفاء التفاصيل
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={downloadErrorsReport}
+                            className="w-full sm:w-auto"
+                          >
+                            <Download className="h-4 w-4 ml-2" />
+                            تحميل تقرير الأخطاء
+                          </Button>
+                        </div>
+
+                        {/* Error List */}
+                        <div className="rounded-lg border bg-card">
+                          <div className="divide-y">
+                            {errors.map((error, index) => (
+                              <div
+                                key={index}
+                                className="p-3 text-sm hover:bg-muted/50 transition-colors"
+                              >
+                                <div className="font-medium text-foreground">
+                                  {error.record || 'سجل غير معروف'}
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  {error.error}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-
-            {showErrors && errorCount > 0 && (
-              <div className="mt-4 space-y-4 bg-background/50 border border-border p-4 rounded-lg max-h-[60vh] overflow-y-auto">
-                {Object.entries(
-                  errors.reduce((groups, error) => {
-                    const type = error.type || 'other';
-                    if (!groups[type]) groups[type] = [];
-                    groups[type].push(error);
-                    return groups;
-                  }, {} as Record<string, UploadError[]>)
-                ).map(([type, typeErrors]) => (
-                  <div key={type} className="space-y-2">
-                    <h4 className="font-medium text-foreground sticky top-0 bg-background/95 py-2 backdrop-blur-sm">{getErrorTypeTitle(type)}</h4>
-                    <ul className="space-y-1">
-                      {typeErrors.map((error, index) => (
-                        <li key={index} className="text-sm text-muted-foreground flex items-start break-words">
-                          <AlertCircle className="ml-2 h-4 w-4 mt-0.5 shrink-0 text-destructive" />
-                          <div className="flex-1 min-w-0">
-                            {error.record && <span className="font-medium text-foreground">{error.record} - </span>}
-                            <span>{getErrorMessage(error)}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
+            </CardContent>
           </div>
         </div>
       )}
@@ -667,75 +729,138 @@ export function UploadForm() {
             <span className="font-semibold text-foreground">تم رفع الملف بنجاح</span>
           </div>
 
-          <div className="grid gap-2">
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">اجمالي السجلات:</span>
-              <span className="font-medium text-foreground">{stats.total}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-3 rounded-lg bg-muted/30">
+              <div className="text-sm text-muted-foreground">اجمالي السجلات:</div>
+              <div className="text-2xl font-bold mt-1">{stats.total}</div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">السجلات الصالحة:</span>
-              <span className="font-medium text-success">{stats.valid}</span>
+            <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
+              <div className="text-sm text-muted-foreground">السجلات الصالحة:</div>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+                {stats.valid}
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">السجلات غير الصالحة:</span>
-              <span className="font-medium text-destructive">{stats.invalid}</span>
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30">
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="text-sm text-muted-foreground flex items-center gap-1 cursor-help">
+                      <span>السجلات غير الصالحة:</span>
+                      <InfoIcon className="h-4 w-4" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent 
+                    side="top" 
+                    align="start" 
+                    className="bg-popover text-popover-foreground"
+                  >
+                    <p className="text-sm text-right">سجلات تحتوي على خطأ واحد أو أكثر</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400 mt-1">
+                {stats.invalid}
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">السجلات المكررة:</span>
-              <span className="font-medium text-warning">{stats.duplicates}</span>
+            <div className="p-3 rounded-lg bg-muted/30">
+              <div className="text-sm text-muted-foreground">السجلات المكررة:</div>
+              <div className="text-2xl font-bold mt-1">{stats.duplicates}</div>
             </div>
           </div>
 
-          {showErrorActions && (
-            <div className="flex flex-col gap-2 mt-4">
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setStatus('idle');
+                form.reset();
+                setSelectedFile(null);
+                setErrors([]);
+                setStats({
+                  total: 0,
+                  valid: 0,
+                  invalid: 0,
+                  duplicates: 0,
+                });
+                setHasFile(false);
+                setFileKey(prev => prev + 1);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+              }}
+              className="w-full sm:w-auto"
+            >
+              رفع ملف آخر
+            </Button>
+            {errors.length > 0 && (
               <Button
                 variant="outline"
-                onClick={() => setShowErrors(!showErrors)}
+                onClick={downloadErrorsReport}
+                className="w-full sm:w-auto"
               >
-                {showErrors ? "إخفاء تفاصيل الأخطاء" : `عرض تفاصيل الأخطاء (${errorCount})`}
+                <Download className="h-4 w-4 ml-2" />
+                تحميل تقرير الأخطاء
               </Button>
-              {errorCount > 0 && (
-                <Button
-                  variant="outline"
-                  className="flex items-center justify-center gap-2"
-                  onClick={downloadErrorsReport}
-                >
-                  <Download className="h-4 w-4" />
-                  تحميل تقرير الأخطاء
-                </Button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
-          {showErrors && errorCount > 0 && (
-            <div className="mt-4 space-y-4 bg-background/50 border border-border p-4 rounded-lg max-h-[60vh] overflow-y-auto">
-              {Object.entries(
-                errors.reduce((groups, error) => {
-                  const type = error.type || 'other';
-                  if (!groups[type]) groups[type] = [];
-                  groups[type].push(error);
-                  return groups;
-                }, {} as Record<string, UploadError[]>)
-              ).map(([type, typeErrors]) => (
-                <div key={type} className="space-y-2">
-                  <h4 className="font-medium text-foreground sticky top-0 bg-background/95 py-2 backdrop-blur-sm">{getErrorTypeTitle(type)}</h4>
-                  <ul className="space-y-1">
-                    {typeErrors.map((error, index) => (
-                      <li key={index} className="text-sm text-muted-foreground flex items-start break-words">
-                        <AlertCircle className="ml-2 h-4 w-4 mt-0.5 shrink-0 text-destructive" />
-                        <div className="flex-1 min-w-0">
-                          {error.record && <span className="font-medium text-foreground">{error.record} - </span>}
-                          <span>{getErrorMessage(error)}</span>
+          {/* Error Details */}
+          {errors.length > 0 && (
+            <div className="mt-6">
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowErrors(!showErrors)}
+                      className="w-full text-right"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span>عرض تفاصيل الأخطاء ({errors.length})</span>
+                        <InfoIcon className="h-4 w-4" />
+                      </div>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent 
+                    side="top" 
+                    align="center" 
+                    className="bg-popover text-popover-foreground"
+                  >
+                    <p className="text-sm text-right">
+                      تم العثور على {errors.length} خطأ في {stats.invalid} سجل
+                      <br />
+                      بعض السجلات قد تحتوي على أكثر من خطأ
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {showErrors && (
+                <div className="space-y-3 mt-3">
+                  <div className="rounded-lg border bg-card">
+                    <div className="divide-y">
+                      {errors.map((error, index) => (
+                        <div
+                          key={index}
+                          className="p-3 text-sm hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="font-medium text-foreground">
+                            {error.record || 'سجل غير معروف'}
+                          </div>
+                          <div className="mt-1 text-muted-foreground">
+                            {error.error}
+                          </div>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
       )}
     </div>
-  )
+  );
 }

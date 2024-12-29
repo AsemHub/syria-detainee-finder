@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // Create CSV content with UTF-8 BOM
+    // Create CSV content with UTF-8 BOM and only English headers
     const BOM = '\ufeff';
     const headers = 'full_name,last_seen_location,contact_info,date_of_detention,detention_facility,physical_description,age_at_detention,gender,status,additional_notes';
-    const arabicHeaders = 'الاسم الكامل (مطلوب),آخر مكان شوهد فيه (مطلوب),معلومات الاتصال (مطلوب),تاريخ الاعتقال (YYYY-MM-DD),مكان الاعتقال,الوصف الجسدي,العمر (0-120),الجنس (ذكر/أنثى/غير معروف),الحالة (معتقل/مفقود/محرر/متوفى/غير معروف),ملاحظات إضافية';
     
     // Combine with BOM
-    const csvContent = BOM + headers + '\n' + arabicHeaders;
+    const csvContent = BOM + headers;
 
     // Create response with proper headers
     return new NextResponse(csvContent, {

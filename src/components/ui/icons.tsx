@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { LucideProps } from "lucide-react";
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
@@ -137,51 +138,43 @@ export function SearchLovedOnesIcon({ className, ...props }: IconProps) {
   );
 }
 
-export function DocumentationIcon({ className, ...props }: IconProps) {
+export function DocumentationIcon(props: LucideProps) {
   return (
     <svg
-      width="24"
-      height="24"
+      xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"
       fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={cn("", className)}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       {...props}
     >
-      <title>Documentation Symbol</title>
-      <path
-        d="M4 4V20C4 20 4 21 5 21H19C20 21 20 20 20 20V7L16 3H5C4 3 4 4 4 4Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M16 3V7H20"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 12H16"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        className="text-primary"
-      />
-      <path
-        d="M8 16H16"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        className="text-primary"
-      />
-      <path
-        d="M8 8H12"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        className="text-primary"
-      />
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <line x1="10" y1="9" x2="8" y2="9" />
+    </svg>
+  );
+}
+
+export function InfoIcon(props: LucideProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 text-muted-foreground"
+      {...props}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
     </svg>
   );
 }
