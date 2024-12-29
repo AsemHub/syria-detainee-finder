@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Documentation
 /docs
+uploadForm.md
+public/test-validation.csv
+public/validation-test.csv

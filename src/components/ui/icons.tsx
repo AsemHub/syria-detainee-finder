@@ -1,9 +1,58 @@
 import { cn } from "@/lib/utils";
 import { LucideProps } from "lucide-react";
+import { forwardRef } from "react";
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
 }
+
+export const InfoIcon = forwardRef<SVGSVGElement, LucideProps>((props, ref) => {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      ref={ref}
+      {...props}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+});
+InfoIcon.displayName = "InfoIcon";
+
+export const DocumentationIcon = forwardRef<SVGSVGElement, LucideProps>((props, ref) => {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      ref={ref}
+      {...props}
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  );
+});
+DocumentationIcon.displayName = "DocumentationIcon";
 
 export function HopeIcon({ className, ...props }: IconProps) {
   return (
@@ -100,7 +149,10 @@ export function UnityIcon({ className, ...props }: IconProps) {
   );
 }
 
-export function SearchLovedOnesIcon({ className, ...props }: IconProps) {
+export const SearchLovedOnesIcon = forwardRef<SVGSVGElement, IconProps>((
+  { className, ...props },
+  ref
+) => {
   return (
     <svg
       width="24"
@@ -109,72 +161,41 @@ export function SearchLovedOnesIcon({ className, ...props }: IconProps) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={cn("", className)}
+      ref={ref}
       {...props}
     >
       <title>Search for Loved Ones Symbol</title>
-      {/* Search circle */}
       <circle
         cx="11"
         cy="11"
-        r="6"
+        r="8"
         stroke="currentColor"
         strokeWidth="1.5"
+        className="search-circle"
       />
-      {/* Search handle */}
       <path
-        d="M15.5 15.5L19 19"
+        d="M21 21L16.65 16.65"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
+        className="search-handle"
       />
-      {/* Heart */}
       <path
-        d="M11 7C11 7 9 6 8 7C7 8 7 10 8 11C9 12 11 13.5 11 13.5C11 13.5 13 12 14 11C15 10 15 8 14 7C13 6 11 7 11 7Z"
-        fill="currentColor"
-        className="text-primary"
-        strokeWidth="0"
+        d="M11 7C11 7 13 9 13 11C13 13 11 15 11 15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        className="heart-left text-primary"
+      />
+      <path
+        d="M11 7C11 7 9 9 9 11C9 13 11 15 11 15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        className="heart-right text-primary"
       />
     </svg>
   );
-}
-
-export function DocumentationIcon(props: LucideProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <line x1="10" y1="9" x2="8" y2="9" />
-    </svg>
-  );
-}
-
-export function InfoIcon(props: LucideProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 text-muted-foreground"
-      {...props}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
-    </svg>
-  );
-}
+});
+SearchLovedOnesIcon.displayName = "SearchLovedOnesIcon";
