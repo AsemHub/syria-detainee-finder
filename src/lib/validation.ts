@@ -21,31 +21,44 @@ export function validateRecord(record: any): ValidationResult {
     errors.push('معلومات الاتصال مطلوبة');
   }
 
-  // Validate gender - only add error if an invalid value is provided
-  if (record.gender && 
-      !['male', 'female', 'unknown', 'ذكر', 'انثى', 'أنثى', 'غير معروف'].includes(record.gender.toLowerCase().trim())) {
-    errors.push('قيمة الجنس غير صالحة. يجب أن تكون ذكر، انثى، أو غير معروف');
-  }
-
-  // Validate status - only add error if an invalid value is provided
-  if (record.status && validateStatus(record.status) === 'unknown' && 
-      !['unknown', 'غير معروف'].includes(record.status.toLowerCase().trim())) {
-    errors.push('قيمة الحالة غير صالحة. يجب أن تكون معتقل، مفقود، محرر، متوفى، أو غير معروف');
-  }
-
-  // Validate date_of_detention
+  // Validate date_of_detention if provided
   if (record.date_of_detention) {
-    const date = new Date(record.date_of_detention);
-    if (isNaN(date.getTime())) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(record.date_of_detention)) {
       errors.push('تاريخ الاعتقال غير صالح. يجب أن يكون بتنسيق YYYY-MM-DD');
+    } else {
+      const date = new Date(record.date_of_detention);
+      if (isNaN(date.getTime())) {
+        errors.push('تاريخ الاعتقال غير صالح');
+      }
     }
   }
 
-  // Validate age_at_detention
-  if (record.age_at_detention) {
+  // Validate age_at_detention if provided
+  if (record.age_at_detention !== null && record.age_at_detention !== undefined) {
     const age = parseInt(record.age_at_detention);
     if (isNaN(age) || age < 0 || age > 120) {
       errors.push('العمر غير صالح. يجب أن يكون رقماً بين 0 و 120');
+    }
+  }
+
+  // Validate gender if provided
+  if (record.gender) {
+    const validGenders = ['male', 'female', 'unknown', 'ذكر', 'انثى', 'أنثى', 'غير معروف'];
+    if (!validGenders.includes(record.gender.toLowerCase().trim())) {
+      errors.push('قيمة الجنس غير صالحة. يجب أن تكون ذكر، انثى، أو غير معروف');
+    }
+  }
+
+  // Validate status if provided
+  if (record.status) {
+    const validStatuses = [
+      'in_custody', 'missing', 'released', 'deceased', 'unknown',
+      'معتقل', 'مفقود', 'محرر', 'متوفى', 'غير معروف',
+      'سجين', 'محتجز', 'مختفي', 'مختفى', 'متوفي', 'ميت', 'شهيد'
+    ];
+    if (!validStatuses.includes(record.status.toLowerCase().trim())) {
+      errors.push('قيمة الحالة غير صالحة. يجب أن تكون معتقل، مفقود، محرر، متوفى، أو غير معروف');
     }
   }
 

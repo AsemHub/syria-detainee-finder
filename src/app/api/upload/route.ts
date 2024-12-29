@@ -177,7 +177,7 @@ export async function POST(req: Request) {
       .eq('id', sessionId);
 
     // Process records in the background
-    processRecords(records, sessionId!, organization, supabase);
+    processRecords(records, organization, sessionId!, supabase);
 
     return NextResponse.json({
       message: 'Upload started',
@@ -219,69 +219,128 @@ export async function POST(req: Request) {
 // Process records in the background
 async function processRecords(
   records: any[],
-  sessionId: string,
   organization: string,
+  sessionId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const context: LogContext = {
-    sessionId,
-    organization
-  };
-  Logger.setContext(context);
-  Logger.info('Starting background processing', { 
-    recordCount: records.length
-  });
-  
   let processedRecords = 0;
   let validRecordsCount = 0;
   let invalidRecordsCount = 0;
-  let duplicateRecordsCount = 0;
-  let skippedDuplicatesCount = 0;
-  const uploadErrors: { record: string; error: string; type: string }[] = [];
+  let errors: { record: string, errors: { message: string, type: string }[] }[] = [];
 
   try {
-    // Process each record
     for (const record of records) {
       try {
-        // Update processing details
+        processedRecords++;
+
+        // Update session with current record
         await supabase
           .from('upload_sessions')
           .update({
             processed_records: processedRecords,
             valid_records: validRecordsCount,
             invalid_records: invalidRecordsCount,
-            duplicate_records: duplicateRecordsCount,
-            skipped_duplicates: skippedDuplicatesCount,
             processing_details: {
+              current_index: processedRecords - 1,
               current_name: record.full_name,
-              current_index: processedRecords,
               total: records.length
-            }
+            },
+            last_update: new Date().toISOString()
           })
           .eq('id', sessionId);
 
         // Process record logic...
-        processedRecords++;
+        const cleanedRecord = {
+          // Required fields
+          full_name: normalizeNameForDb(record.full_name),
+          source_organization: organization,
 
+          // Optional fields with defaults
+          gender: validateGender(record.gender),
+          status: validateStatus(record.status),
+          organization: organization,
+          original_name: record.full_name,
+
+          // Optional date fields
+          date_of_detention: record.date_of_detention || null,
+          last_update_date: new Date().toISOString(),
+
+          // Optional text fields
+          last_seen_location: cleanupText(record.last_seen_location) || cleanupText(record.place_of_detention) || '',
+          detention_facility: cleanupText(record.detention_facility) || cleanupText(record.place_of_detention) || '',
+          physical_description: cleanupText(record.physical_description) || '',
+          contact_info: cleanupText(record.contact_info) || '',
+          additional_notes: cleanupText(record.notes) || '',
+
+          // Optional numeric fields
+          age_at_detention: record.age_at_detention ? parseInt(record.age_at_detention) : null,
+
+          // Reference fields
+          upload_session_id: sessionId
+        };
+
+        // Validate the record
+        const validation = validateRecord(cleanedRecord);
+        if (!validation.isValid) {
+          invalidRecordsCount++;
+          
+          // Map each validation error to the UI format
+          validation.errors.forEach(errorMsg => {
+            errors.push({
+              record: cleanedRecord.full_name || `Row ${processedRecords}`,
+              errors: [{ message: errorMsg, type: errorMsg.includes('مطلوب') ? 'missing_required' :
+                    errorMsg.includes('تاريخ') ? 'invalid_date' :
+                    errorMsg.includes('العمر') ? 'invalid_data' :
+                    errorMsg.includes('الجنس') ? 'invalid_data' :
+                    errorMsg.includes('الحالة') ? 'invalid_data' : 'other' }]
+            });
+          });
+          
+          Logger.error('Record validation failed', {
+            errors: validation.errors,
+            record: cleanedRecord.full_name
+          });
+          
+          // Skip invalid record
+          continue;
+        }
+
+        // Insert the record
+        const { error: insertError } = await supabase
+          .from('detainees')
+          .insert(cleanedRecord);
+
+        if (insertError) {
+          Logger.error('Failed to insert record', { 
+            error: insertError,
+            record: cleanedRecord.full_name
+          });
+          throw insertError;
+        }
+
+        validRecordsCount++;
+        Logger.debug('Record processed successfully', { 
+          name: cleanedRecord.full_name,
+          recordNumber: processedRecords
+        });
       } catch (error) {
+        invalidRecordsCount++;
+        errors.push({
+          record: record.full_name || `Row ${processedRecords}`,
+          errors: [{ message: error instanceof Error ? error.message : 'Unknown error', type: 'other' }]
+        });
+        
         Logger.error('Record processing error', { 
           error: error instanceof Error ? {
             message: error.message,
             stack: error.stack
           } : error,
-          record: record.full_name || `Row ${processedRecords + 2}`
-        });
-
-        invalidRecordsCount++;
-        uploadErrors.push({
-          record: record.full_name || `Row ${processedRecords + 2}`,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          type: 'processing_error'
+          record: record.full_name || `Row ${processedRecords}`
         });
       }
     }
 
-    // Final update
+    // Final update with error summary
     await supabase
       .from('upload_sessions')
       .update({
@@ -289,9 +348,7 @@ async function processRecords(
         processed_records: processedRecords,
         valid_records: validRecordsCount,
         invalid_records: invalidRecordsCount,
-        duplicate_records: duplicateRecordsCount,
-        skipped_duplicates: skippedDuplicatesCount,
-        errors: uploadErrors
+        errors: errors
       })
       .eq('id', sessionId);
 
@@ -299,9 +356,7 @@ async function processRecords(
       stats: {
         total: processedRecords,
         valid: validRecordsCount,
-        invalid: invalidRecordsCount,
-        duplicates: duplicateRecordsCount,
-        skipped: skippedDuplicatesCount
+        invalid: invalidRecordsCount
       }
     });
 
@@ -319,7 +374,7 @@ async function processRecords(
       .update({
         status: 'failed',
         error_message: error instanceof Error ? error.message : 'Unknown error',
-        errors: uploadErrors
+        errors: errors
       })
       .eq('id', sessionId);
   }

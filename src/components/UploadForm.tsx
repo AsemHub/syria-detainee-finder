@@ -42,10 +42,14 @@ type FormData = z.infer<typeof formSchema>
 
 type UploadStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 
+type ErrorMessage = {
+  message: string;
+  type: string;
+}
+
 type UploadError = {
   record: string;
-  error: string;
-  type: string;
+  errors: ErrorMessage[];
 }
 
 type ProcessingDetails = {
@@ -143,7 +147,7 @@ const getErrorTypeTitle = (type: string) => {
   };
 };
 
-const getErrorMessage = (error: UploadError) => {
+const getErrorMessage = (error: ErrorMessage) => {
   switch (error.type) {
     case 'duplicate':
       return 'هذا السجل مكرر في قاعدة البيانات';
@@ -152,16 +156,16 @@ const getErrorMessage = (error: UploadError) => {
     case 'missing_required':
       return 'حقول مطلوبة مفقودة';
     case 'invalid_data':
-      if (error.error.includes('age')) {
+      if (error.message.includes('age')) {
         return 'العمر يجب أن يكون رقماً صحيحاً';
-      } else if (error.error.includes('gender')) {
+      } else if (error.message.includes('gender')) {
         return 'الجنس يجب أن يكون أحد الخيارات: ذكر/أنثى/غير محدد';
-      } else if (error.error.includes('status')) {
+      } else if (error.message.includes('status')) {
         return 'الحالة يجب أن تكون أحد الخيارات: معتقل/مفقود/محرر/متوفى/غير معروف';
       }
-      return error.error;
+      return error.message;
     default:
-      return error.error;
+      return error.message;
   };
 };
 
@@ -231,11 +235,7 @@ export function UploadForm() {
 
             // Update errors array from session
             if (data.errors && Array.isArray(data.errors)) {
-              setErrors(data.errors.map(error => ({
-                record: error.record || '',
-                error: error.error || 'Unknown error',
-                type: error.type || 'other'
-              })));
+              setErrors(data.errors);
             }
 
             // Update status based on session state
@@ -249,12 +249,16 @@ export function UploadForm() {
               setIsUploading(false);
               if (data.error_message) {
                 setErrors(prev => {
-                  const newError = {
+                  const newError: UploadError = {
                     record: '',
-                    error: data.error_message || 'Unknown error',
-                    type: 'error'
+                    errors: [{
+                      message: data.error_message || 'Unknown error',
+                      type: 'error'
+                    }]
                   };
-                  return prev.some(e => e.error === newError.error) ? prev : [...prev, newError];
+                  return prev.some(e => e.errors.some(err => err.message === newError.errors[0].message))
+                    ? prev 
+                    : [...prev, newError];
                 });
               }
             } else if (data.status === 'processing') {
@@ -377,8 +381,10 @@ export function UploadForm() {
               setIsUploading(false);
               setErrors(session.errors || [{
                 record: '',
-                error: session.error_message || 'Unknown error',
-                type: 'error'
+                errors: [{
+                  message: session.error_message || 'Unknown error',
+                  type: 'error'
+                }]
               }]);
               subscription.unsubscribe();
             } else if (session.status === 'processing' && session.processing_details) {
@@ -406,8 +412,10 @@ export function UploadForm() {
       setStatus('failed');
       setErrors([{ 
         record: '', 
-        error: error instanceof Error ? error.message : 'Upload failed', 
-        type: 'error' 
+        errors: [{
+          message: error instanceof Error ? error.message : 'Upload failed', 
+          type: 'error' 
+        }]
       }]);
       setIsUploading(false);
     }
@@ -450,11 +458,13 @@ export function UploadForm() {
     const BOM = '\ufeff';
     const rows = [
       ['السجل', 'نوع الخطأ', 'تفاصيل الخطأ'],
-      ...errors.map(error => [
-        error.record || '',
-        getErrorTypeTitle(error.type || 'other'),
-        getErrorMessage(error)
-      ])
+      ...errors.map(error => 
+        error.errors.map(err => [
+          error.record || '',
+          getErrorTypeTitle(err.type || 'other'),
+          getErrorMessage(err)
+        ])
+      ).flat()
     ];
 
     // Convert rows to CSV with proper escaping
@@ -704,9 +714,11 @@ export function UploadForm() {
                                 <div className="font-medium text-foreground">
                                   {error.record || 'سجل غير معروف'}
                                 </div>
-                                <div className="mt-1 text-muted-foreground">
-                                  {error.error}
-                                </div>
+                                {error.errors.map((err, i) => (
+                                  <div key={i} className="mt-1 text-muted-foreground">
+                                    {err.message}
+                                  </div>
+                                ))}
                               </div>
                             ))}
                           </div>
@@ -848,9 +860,11 @@ export function UploadForm() {
                           <div className="font-medium text-foreground">
                             {error.record || 'سجل غير معروف'}
                           </div>
-                          <div className="mt-1 text-muted-foreground">
-                            {error.error}
-                          </div>
+                          {error.errors.map((err, i) => (
+                            <div key={i} className="mt-1 text-muted-foreground">
+                              {err.message}
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
