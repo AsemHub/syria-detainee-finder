@@ -36,9 +36,10 @@ function cleanCsvValue(value: string): string {
 
 // CORS headers configuration
 const corsHeaders = {
-  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? '*' : 'https://syrianrevolution.eu',
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://syrianrevolution.eu',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Credentials': 'true'
 };
 
 // Handle OPTIONS preflight request
@@ -49,10 +50,7 @@ export async function OPTIONS() {
 export async function POST(req: Request) {
   try {
     // Add CORS headers to the response
-    const headers = {
-      ...corsHeaders,
-      'Access-Control-Allow-Origin': '*',
-    };
+    const headers = { ...corsHeaders };
 
     // Log request details
     Logger.debug('Upload request received', {
