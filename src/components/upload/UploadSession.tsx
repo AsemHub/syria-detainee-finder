@@ -136,12 +136,20 @@ export class UploadSessionManager {
         .on(
           'postgres_changes',
           {
-            event: 'UPDATE',
+            event: '*',
             schema: 'public',
             table: 'upload_sessions',
             filter: `id=eq.${sessionId}`
           },
           (payload) => {
+            Logger.debug('Realtime update received', { 
+              sessionId, 
+              eventType: payload.eventType,
+              table: payload.table,
+              schema: payload.schema,
+              payload 
+            });
+
             const data = payload.new as UploadSession;
             Logger.debug('Session update received', { 
               sessionId, 
