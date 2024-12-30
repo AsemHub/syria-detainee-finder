@@ -537,16 +537,22 @@ async function processRecords(
             }
 
             // Also update the upload session with the error using raw SQL
-            const { error: sessionError } = await supabaseAdmin
-              .from('upload_sessions')
-              .update({
-                errors: `COALESCE(errors, '[]'::jsonb) || ('${JSON.stringify({
+            const { error: sessionError } = await supabaseAdmin.rpc('exec', {
+              sql: `
+                UPDATE upload_sessions 
+                SET 
+                  errors = COALESCE(errors, '[]'::jsonb) || $1::jsonb,
+                  invalid_records = COALESCE(invalid_records, 0) + 1
+                WHERE id = $2
+              `,
+              params: [
+                JSON.stringify({
                   record: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
                   errors: validation.errors
-                })}'::jsonb)`,
-                invalid_records: `COALESCE(invalid_records, 0) + 1`
-              }, { count: 'exact' })
-              .eq('id', sessionId);
+                }),
+                sessionId
+              ]
+            });
 
             if (sessionError) {
               Logger.error('Failed to update session with error', {
