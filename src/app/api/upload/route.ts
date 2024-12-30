@@ -338,58 +338,43 @@ export async function POST(req: Request) {
       notes: record.notes
     }));
 
-    // Start processing records asynchronously but ensure the session is created
+    Logger.info('Starting background processing', { 
+      sessionId,
+      recordCount: transformedRecords.length 
+    });
+
+    // Process all records at once
     try {
-      Logger.info('Starting background processing', { 
-        sessionId,
-        recordCount: transformedRecords.length 
-      });
+      await processRecords(transformedRecords, organization, sessionId, supabaseAdmin);
+      
+      Logger.info('Processing completed successfully', { sessionId });
 
-      // Ensure processing starts by awaiting the first step
       await updateSession(supabase, sessionId, {
-        status: 'processing',
-        total_records: transformedRecords.length
+        status: 'completed',
+        completed_at: new Date().toISOString()
       });
-
-      // Start processing in background
-      processRecords(transformedRecords, organization, sessionId, supabaseAdmin)
-        .catch(error => {
-          Logger.error('Error in background processing', { 
-            error: error instanceof Error ? {
-              message: error.message,
-              stack: error.stack
-            } : error,
-            sessionId 
-          });
-          return updateSession(supabase, sessionId, {
-            status: 'failed',
-            error_message: error instanceof Error ? error.message : 'Unknown error'
-          });
-        });
-
-      Logger.info('Background processing initiated', { sessionId });
       
       return NextResponse.json(
-        { message: 'Upload started successfully', sessionId },
+        { message: 'Upload completed successfully', sessionId },
         { status: 200, headers }
       );
 
     } catch (error) {
-      Logger.error('Failed to start processing', {
+      Logger.error('Error processing records', { 
         error: error instanceof Error ? {
           message: error.message,
           stack: error.stack
         } : error,
-        sessionId
+        sessionId 
       });
-      
+
       await updateSession(supabase, sessionId, {
         status: 'failed',
-        error_message: 'Failed to start processing'
+        error_message: error instanceof Error ? error.message : 'Failed to process records'
       });
 
       return NextResponse.json(
-        { error: 'Failed to start processing' },
+        { error: 'Failed to process records' },
         { status: 500, headers }
       );
     }
@@ -521,7 +506,6 @@ async function processRecords(
               errors: validation.errors
             });
 
-            // Use service role client for inserting invalid records
             const { data: insertedRecord, error: invalidRecordError } = await supabaseAdmin
               .from('invalid_records')
               .insert({
@@ -552,12 +536,17 @@ async function processRecords(
               });
             }
 
-            // Also update the upload session with the error using raw SQL
-            const { error: sessionError } = await supabaseAdmin.rpc('update_session_errors', {
-              p_session_id: sessionId,
-              p_record_name: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
-              p_errors: validation.errors
-            });
+            // Also update the upload session with the error
+            const { error: sessionError } = await supabaseAdmin
+              .from('upload_sessions')
+              .update({
+                errors: `array_append(errors, '${JSON.stringify({
+                  record: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
+                  errors: validation.errors
+                })}'::jsonb)`,
+                invalid_records: `invalid_records + 1`
+              })
+              .eq('id', sessionId);
 
             if (sessionError) {
               Logger.error('Failed to update session with error', {
