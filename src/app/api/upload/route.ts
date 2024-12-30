@@ -36,9 +36,9 @@ function cleanCsvValue(value: string): string {
 
 // CORS headers configuration
 const corsHeaders = {
-  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://syrianrevolution.eu',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,DELETE,PATCH,POST,PUT',
+  'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
   'Access-Control-Allow-Credentials': 'true'
 };
 
@@ -48,6 +48,8 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  Logger.info('Starting file upload process');
+  
   try {
     // Add CORS headers to the response
     const headers = { ...corsHeaders };
@@ -60,7 +62,8 @@ export async function POST(req: Request) {
     });
 
     const formData = await req.formData();
-    
+    Logger.info('Form data received');
+
     // Log FormData entries
     const formDataEntries: Record<string, any> = {};
     formData.forEach((value, key) => {
@@ -149,6 +152,12 @@ export async function POST(req: Request) {
 
     // At this point, TypeScript knows fileEntry is a File-like object
     const file = fileEntry;
+
+    Logger.info('File and organization data extracted', {
+      fileName: file.name,
+      fileSize: file.size,
+      organization
+    });
 
     // Validate file type
     const validMimeTypes = [
@@ -245,12 +254,17 @@ export async function POST(req: Request) {
 
     // Read file content as text
     const fileContent = await file.text();
+    Logger.info('File content read successfully', { 
+      sessionId,
+      contentLength: fileContent.length 
+    });
     
     // Parse CSV
     const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (header) => {
+        Logger.debug('Transforming header', { header });
         const headerMap: { [key: string]: string } = {
           'الاسم الكامل': 'full_name',
           'الجنس': 'gender',
@@ -262,13 +276,29 @@ export async function POST(req: Request) {
           'ملاحظات': 'notes'
         };
         const normalizedHeader = header.trim();
-        return headerMap[normalizedHeader] || normalizedHeader;
+        const mappedHeader = headerMap[normalizedHeader] || normalizedHeader;
+        Logger.debug('Header mapped', { 
+          original: header,
+          normalized: normalizedHeader,
+          mapped: mappedHeader 
+        });
+        return mappedHeader;
       },
-      transform: (value) => cleanCsvValue(value),
+      transform: (value) => {
+        const cleaned = cleanCsvValue(value);
+        Logger.debug('Transformed value', { 
+          original: value,
+          cleaned 
+        });
+        return cleaned;
+      },
     });
 
     if (parseErrors.length > 0) {
-      Logger.error('CSV parsing failed', { parseErrors });
+      Logger.error('CSV parsing failed', { 
+        parseErrors,
+        sessionId 
+      });
       
       await updateSession(supabase, sessionId, {
         status: 'failed',

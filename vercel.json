@@ -1,5 +1,10 @@
 {
   "version": 2,
   "buildCommand": "next build",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "functions": {
+    "api/upload/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }
