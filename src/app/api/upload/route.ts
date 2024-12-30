@@ -543,7 +543,7 @@ async function processRecords(
                 SET 
                   errors = COALESCE(errors, '[]'::jsonb) || $1::jsonb,
                   invalid_records = COALESCE(invalid_records, 0) + 1
-                WHERE id = $2
+                WHERE id = $2::uuid
               `,
               params: [
                 JSON.stringify({
