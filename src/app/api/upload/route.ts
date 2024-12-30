@@ -326,11 +326,11 @@ export async function POST(req: Request) {
       notes: record.notes
     }));
 
-    // Start processing records in the background
-    processRecords(transformedRecords, organization, sessionId, supabase);
+    // Process records within the request context
+    await processRecords(transformedRecords, organization, sessionId, supabase);
 
     return NextResponse.json(
-      { message: 'Upload started successfully', sessionId },
+      { message: 'Upload completed successfully', sessionId },
       { status: 200, headers }
     );
 
