@@ -3,7 +3,7 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "functions": {
-    "api/upload/route.ts": {
+    "src/app/api/upload/route.ts": {
       "maxDuration": 60
     }
   }
