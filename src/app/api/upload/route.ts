@@ -521,6 +521,7 @@ async function processRecords(
               errors: validation.errors
             });
 
+            // Use service role client for inserting invalid records
             const { data: insertedRecord, error: invalidRecordError } = await supabaseAdmin
               .from('invalid_records')
               .insert({
@@ -551,14 +552,12 @@ async function processRecords(
               });
             }
 
-            // Also update the upload session with the error
-            const { error: sessionError } = await supabaseAdmin
-              .from('upload_sessions')
-              .update({
-                errors: supabase.sql`array_append(errors, jsonb_build_object('record', ${record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`}, 'errors', ${JSON.stringify(validation.errors)}))`,
-                invalid_records: supabase.sql`invalid_records + 1`
-              })
-              .eq('id', sessionId);
+            // Also update the upload session with the error using raw SQL
+            const { error: sessionError } = await supabaseAdmin.rpc('update_session_errors', {
+              p_session_id: sessionId,
+              p_record_name: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
+              p_errors: validation.errors
+            });
 
             if (sessionError) {
               Logger.error('Failed to update session with error', {
