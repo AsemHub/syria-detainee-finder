@@ -25,9 +25,6 @@ export const createClientSupabaseClient = () => {
       realtime: {
         params: {
           eventsPerSecond: 10
-        },
-        headers: {
-          Origin: process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://syrianrevolution.eu'
         }
       }
     }

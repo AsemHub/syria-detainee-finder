@@ -22,6 +22,18 @@ const supabase = createClient<Database>(
   }
 );
 
+// Initialize server-side Supabase client with service role key for admin operations
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!, // Use service role key for API routes
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  }
+);
+
 // Helper function to sanitize file name for storage
 function sanitizeFileName(fileName: string): string {
   return fileName
@@ -327,18 +339,60 @@ export async function POST(req: Request) {
     }));
 
     // Start processing records asynchronously but ensure the session is created
-    processRecords(transformedRecords, organization, sessionId, supabase).catch(error => {
-      Logger.error('Error processing records', { error, sessionId });
-      updateSession(supabase, sessionId, {
-        status: 'error',
-        error_message: error.message
+    try {
+      Logger.info('Starting background processing', { 
+        sessionId,
+        recordCount: transformedRecords.length 
       });
-    });
 
-    return NextResponse.json(
-      { message: 'Upload started successfully', sessionId },
-      { status: 200, headers }
-    );
+      // Ensure processing starts by awaiting the first step
+      await updateSession(supabase, sessionId, {
+        status: 'processing',
+        total_records: transformedRecords.length
+      });
+
+      // Start processing in background
+      processRecords(transformedRecords, organization, sessionId, supabaseAdmin)
+        .catch(error => {
+          Logger.error('Error in background processing', { 
+            error: error instanceof Error ? {
+              message: error.message,
+              stack: error.stack
+            } : error,
+            sessionId 
+          });
+          return updateSession(supabase, sessionId, {
+            status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          });
+        });
+
+      Logger.info('Background processing initiated', { sessionId });
+      
+      return NextResponse.json(
+        { message: 'Upload started successfully', sessionId },
+        { status: 200, headers }
+      );
+
+    } catch (error) {
+      Logger.error('Failed to start processing', {
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack
+        } : error,
+        sessionId
+      });
+      
+      await updateSession(supabase, sessionId, {
+        status: 'failed',
+        error_message: 'Failed to start processing'
+      });
+
+      return NextResponse.json(
+        { error: 'Failed to start processing' },
+        { status: 500, headers }
+      );
+    }
 
   } catch (error) {
     Logger.error('Upload failed', { 
@@ -458,19 +512,70 @@ async function processRecords(
             });
           });
           
-          // Store invalid record for reference
-          await supabase
-            .from('invalid_records')
-            .insert({
-              session_id: sessionId,
-              record_data: record,
-              errors: validation.errors,
-              row_number: processedRecords
+          // Store invalid record for reference with better error handling
+          try {
+            Logger.debug('Attempting to insert invalid record', {
+              sessionId,
+              organization,
+              fileName: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
+              errors: validation.errors
             });
-          
-          Logger.debug(`Validation failed for record: ${cleanedRecord.full_name}`, {
-            errors: validation.errors
-          });
+
+            const { data: insertedRecord, error: invalidRecordError } = await supabaseAdmin
+              .from('invalid_records')
+              .insert({
+                session_id: sessionId,
+                organization: organization,
+                file_name: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
+                invalid_records: validation.errors,
+                timestamp: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+
+            if (invalidRecordError) {
+              Logger.error('Failed to insert invalid record', {
+                error: invalidRecordError.message,
+                code: invalidRecordError.code,
+                details: invalidRecordError.details,
+                hint: invalidRecordError.hint,
+                record: cleanedRecord.full_name || `Row ${processedRecords}`,
+                sessionId
+              });
+            } else {
+              Logger.debug('Invalid record stored successfully', {
+                recordId: insertedRecord?.id,
+                record: cleanedRecord.full_name || `Row ${processedRecords}`,
+                errors: validation.errors
+              });
+            }
+
+            // Also update the upload session with the error
+            const { error: sessionError } = await supabaseAdmin
+              .from('upload_sessions')
+              .update({
+                errors: supabase.sql`array_append(errors, jsonb_build_object('record', ${record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`}, 'errors', ${JSON.stringify(validation.errors)}))`,
+                invalid_records: supabase.sql`invalid_records + 1`
+              })
+              .eq('id', sessionId);
+
+            if (sessionError) {
+              Logger.error('Failed to update session with error', {
+                error: sessionError.message,
+                sessionId
+              });
+            }
+          } catch (invalidInsertError) {
+            Logger.error('Error storing invalid record', {
+              error: invalidInsertError instanceof Error ? {
+                message: invalidInsertError.message,
+                stack: invalidInsertError.stack
+              } : invalidInsertError,
+              record: cleanedRecord.full_name || `Row ${processedRecords}`,
+              sessionId
+            });
+          }
           
           continue;
         }

@@ -127,12 +127,7 @@ export class UploadSessionManager {
       Logger.debug('Creating channel', { sessionId, retryCount });
 
       channel = this.supabase
-        .channel(`upload_session_${sessionId}`, {
-          config: {
-            broadcast: { ack: true },
-            presence: { key: sessionId }
-          }
-        })
+        .channel(`upload_session_${sessionId}`)
         .on(
           'postgres_changes',
           {
@@ -145,8 +140,6 @@ export class UploadSessionManager {
             Logger.debug('Realtime update received', { 
               sessionId, 
               eventType: payload.eventType,
-              table: payload.table,
-              schema: payload.schema,
               payload 
             });
 
@@ -227,111 +220,24 @@ export class UploadSessionManager {
               });
             }
           }
-        );
-
-      // Handle system events
-      channel.on('system', { event: '*' }, (payload) => {
-        if (!isCompleted) {
-          if (payload.type === 'error') {
-            Logger.error('WebSocket connection error', { 
-              error: payload, 
-              sessionId, 
-              retryCount,
-              message: payload.reason || 'Unknown WebSocket error'
-            });
-            handleReconnect();
-          } else if (payload.type === 'close') {
-            Logger.debug('WebSocket connection closed', { 
-              sessionId, 
-              retryCount,
-              willRetry: retryCount < maxRetries,
-              reason: payload.reason
-            });
-            handleReconnect();
-          }
-        }
-      });
-
-      // Subscribe and handle subscription status
-      channel.subscribe(async (status) => {
-        Logger.debug('Subscription status changed', { 
-          sessionId, 
-          status,
-          timestamp: new Date().toISOString()
-        });
-        
-        if (status === 'SUBSCRIBED') {
-          Logger.debug('Successfully subscribed to session updates', { sessionId });
-          retryCount = 0;
+        )
+        .subscribe((status) => {
+          Logger.debug('Channel subscription status', { status, sessionId });
           
-          // Fetch initial session state
-          try {
-            const { data: session } = await this.supabase
-              .from('upload_sessions')
-              .select('*')
-              .eq('id', sessionId)
-              .single();
-
-            if (session) {
-              Logger.debug('Initial session state', { session });
-              
-              // Check if session is already completed
-              if (session.status === 'completed' || session.status === 'failed') {
-                isCompleted = true;
-                if (callbacks.onStatusChange) {
-                  callbacks.onStatusChange(session.status as UploadStatus);
-                }
-                if (callbacks.onProgress && session.total_records > 0) {
-                  const progress = Math.round((session.processed_records / session.total_records) * 100);
-                  callbacks.onProgress(Math.min(progress, 100));
-                }
-                cleanup(false); // Don't retry for completed sessions
-                return;
-              }
-
-              // For non-completed sessions, update UI
-              if (session.status !== 'pending') {
-                if (callbacks.onStatusChange) {
-                  callbacks.onStatusChange(session.status as UploadStatus);
-                }
-                if (callbacks.onProgress && session.total_records > 0) {
-                  const progress = Math.round((session.processed_records / session.total_records) * 100);
-                  callbacks.onProgress(Math.min(progress, 100));
-                }
-              }
-            }
-          } catch (error) {
-            Logger.error('Error fetching initial session state', { error, sessionId });
-          }
-
-          // Set initial status to processing if not completed
-          if (!isCompleted && callbacks.onStatusChange) {
-            callbacks.onStatusChange('processing');
-          }
-        } else if (status === 'CLOSED') {
-          // Normal closure, only log if not completed
-          if (!isCompleted) {
-            Logger.debug('WebSocket connection closed', { 
-              sessionId, 
-              status,
-              retryCount,
-              willRetry: retryCount < maxRetries
-            });
+          if (status === 'SUBSCRIBED') {
+            Logger.info('Successfully subscribed to channel', { sessionId });
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            Logger.error('Channel subscription failed', { status, sessionId });
             handleReconnect();
           }
-        } else if (status === 'CHANNEL_ERROR') {
-          // Channel specific error
-          if (!isCompleted) {
-            Logger.error('WebSocket channel error', { 
-              sessionId, 
-              status,
-              retryCount,
-              willRetry: retryCount < maxRetries
-            });
-            handleReconnect();
-          }
+        });
+
+      return () => {
+        if (channel) {
+          Logger.debug('Unsubscribing from channel', { sessionId });
+          channel.unsubscribe();
         }
-      });
+      };
     };
 
     const handleReconnect = () => {
