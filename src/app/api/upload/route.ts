@@ -326,11 +326,17 @@ export async function POST(req: Request) {
       notes: record.notes
     }));
 
-    // Process records within the request context
-    await processRecords(transformedRecords, organization, sessionId, supabase);
+    // Start processing records asynchronously but ensure the session is created
+    processRecords(transformedRecords, organization, sessionId, supabase).catch(error => {
+      Logger.error('Error processing records', { error, sessionId });
+      updateSession(supabase, sessionId, {
+        status: 'error',
+        error_message: error.message
+      });
+    });
 
     return NextResponse.json(
-      { message: 'Upload completed successfully', sessionId },
+      { message: 'Upload started successfully', sessionId },
       { status: 200, headers }
     );
 

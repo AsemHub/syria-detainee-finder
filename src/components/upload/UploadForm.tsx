@@ -60,6 +60,24 @@ export function UploadForm() {
     },
   });
 
+  const resetForm = () => {
+    setStatus('idle');
+    setUploadProgress(0);
+    setProcessingProgress(0);
+    setErrors([]);
+    setStats({
+      total: 0,
+      valid: 0,
+      invalid: 0,
+      duplicates: 0
+    });
+    setCurrentRecord(null);
+    setSessionId(null);
+    setIsUploading(false);
+    setSelectedFile(null);
+    form.reset();
+  };
+
   const onSubmit = async (data: FormData) => {
     if (!selectedFile) {
       setErrors([{
@@ -216,6 +234,17 @@ export function UploadForm() {
             errors={errors}
             onDownloadReport={errors.length > 0 ? downloadErrorsReport : undefined}
           />
+
+          {status === 'completed' && (
+            <div className="mt-6 text-center">
+              <Button 
+                onClick={resetForm}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                رفع ملف آخر
+              </Button>
+            </div>
+          )}
         </form>
       </Form>
     </div>
