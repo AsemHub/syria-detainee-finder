@@ -536,16 +536,16 @@ async function processRecords(
               });
             }
 
-            // Also update the upload session with the error
+            // Also update the upload session with the error using raw SQL
             const { error: sessionError } = await supabaseAdmin
               .from('upload_sessions')
               .update({
-                errors: `array_append(errors, '${JSON.stringify({
+                errors: `COALESCE(errors, '[]'::jsonb) || ('${JSON.stringify({
                   record: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
                   errors: validation.errors
                 })}'::jsonb)`,
-                invalid_records: `invalid_records + 1`
-              })
+                invalid_records: `COALESCE(invalid_records, 0) + 1`
+              }, { count: 'exact' })
               .eq('id', sessionId);
 
             if (sessionError) {
