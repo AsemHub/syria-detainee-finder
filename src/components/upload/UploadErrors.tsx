@@ -36,20 +36,30 @@ const getErrorMessage = (error: { message: string; type: string }) => {
     case 'duplicate':
       return 'هذا السجل مكرر في قاعدة البيانات';
     case 'invalid_date':
-      return 'تاريخ غير صالح - يجب أن يكون بتنسيق YYYY-MM-DD';
+      return 'تاريخ غير صالح - يجب أن يكون التاريخ بالصيغة التالية: YYYY-MM-DD (مثال: 2020-01-31)';
     case 'missing_required':
       if (error.message.includes('full_name')) {
-        return 'الاسم الكامل مطلوب';
+        return 'حقل الاسم الكامل مطلوب';
       } else if (error.message.includes('date_of_detention')) {
-        return 'تاريخ الاعتقال مطلوب';
+        return 'حقل تاريخ الاعتقال مطلوب';
+      } else if (error.message.includes('gender')) {
+        return 'حقل الجنس مطلوب';
+      } else if (error.message.includes('age_at_detention')) {
+        return 'حقل العمر عند الاعتقال مطلوب';
+      } else if (error.message.includes('last_seen_location')) {
+        return 'حقل مكان آخر مشاهدة مطلوب';
+      } else if (error.message.includes('status')) {
+        return 'حقل الحالة مطلوب';
+      } else if (error.message.includes('contact_info')) {
+        return 'حقل معلومات الاتصال مطلوب';
       }
-      return 'حقول مطلوبة مفقودة';
+      return `الحقول التالية مطلوبة: ${error.message}`;
     case 'invalid_age':
-      return 'العمر يجب أن يكون رقماً صحيحاً';
+      return 'العمر يجب أن يكون رقماً صحيحاً بين 0 و 120';
     case 'invalid_gender':
-      return 'الجنس يجب أن يكون أحد الخيارات: ذكر/أنثى/غير محدد';
+      return 'الجنس يجب أن يكون أحد الخيارات التالية: ذكر، أنثى، غير محدد';
     case 'invalid_status':
-      return 'الحالة يجب أن تكون أحد الخيارات: معتقل/مفقود/محرر/متوفى/غير معروف';
+      return 'الحالة يجب أن تكون أحد الخيارات التالية: معتقل، مفقود، مطلق سراح، متوفى، غير معروف';
     case 'invalid_data':
       return error.message;
     default:
@@ -79,7 +89,9 @@ export function UploadErrors({ errors, onDownloadReport }: UploadErrorsProps) {
       <CardContent className="space-y-4">
         {errors.map((error, index) => (
           <div key={index} className="space-y-2">
-            <h4 className="font-medium">{error.record}</h4>
+            <h4 className="font-medium">
+              {error.record ? `السجل: ${error.record}` : 'خطأ في الملف'}
+            </h4>
             <ul className="list-disc list-inside space-y-1">
               {error.errors.map((err, errIndex) => (
                 <li key={errIndex} className="text-sm text-destructive">

@@ -29,12 +29,7 @@ describe('Check Duplicate API', () => {
     ]
 
     ;(supabaseServer.rpc as jest.Mock)
-      .mockImplementation((funcName) => {
-        if (funcName === 'search_detainees_exact') {
-          return Promise.resolve({ data: mockMatches, error: null })
-        }
-        return Promise.resolve({ data: [], error: null })
-      })
+      .mockResolvedValueOnce({ data: mockMatches, error: null })
 
     const response = await POST(mockRequest({ full_name: searchName }))
     const data = await response.json()
@@ -51,12 +46,8 @@ describe('Check Duplicate API', () => {
     ]
 
     ;(supabaseServer.rpc as jest.Mock)
-      .mockImplementation((funcName) => {
-        if (funcName === 'search_detainees_fuzzy') {
-          return Promise.resolve({ data: mockSimilarMatches, error: null })
-        }
-        return Promise.resolve({ data: [], error: null })
-      })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: mockSimilarMatches, error: null })
 
     const response = await POST(mockRequest({ full_name: searchName }))
     const data = await response.json()
@@ -73,24 +64,19 @@ describe('Check Duplicate API', () => {
     ]
 
     ;(supabaseServer.rpc as jest.Mock)
-      .mockImplementation((funcName) => {
-        if (funcName === 'search_detainees_exact') {
-          return Promise.resolve({ data: mockMatches, error: null })
-        }
-        return Promise.resolve({ data: [], error: null })
-      })
+      .mockResolvedValueOnce({ data: mockMatches, error: null })
 
     const response = await POST(mockRequest({ full_name: searchName }))
     const data = await response.json()
 
     expect(response.status).toBe(200)
     expect(data.matches.exact).toHaveLength(1)
-    expect(data.performance).toBeDefined()
+    expect(data.matches.similar).toHaveLength(0)
   })
 
   it('should handle search errors gracefully', async () => {
     ;(supabaseServer.rpc as jest.Mock)
-      .mockRejectedValue(new Error('Search failed'))
+      .mockResolvedValueOnce({ data: null, error: new Error('Search failed') })
 
     const response = await POST(mockRequest({ full_name: 'John Doe' }))
     expect(response.status).toBe(500)

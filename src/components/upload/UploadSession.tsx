@@ -7,10 +7,17 @@ import { RealtimeChannel } from '@supabase/supabase-js'
 
 export class UploadSessionManager {
   private supabase = supabaseClient;
+  private channel: RealtimeChannel | null = null;
+  private retryCount = 0;
+  private readonly maxRetries = 5;
+  private readonly retryDelay = 1000; // Base delay in ms
+  private retryTimeout: NodeJS.Timeout | null = null;
+  private isCompleted = false;
+  private currentStatus: UploadStatus | null = null;
 
   async createSession(file: File, organization: string): Promise<UploadSession> {
     try {
-      // First create the session
+      // Create the upload session
       const { data: session, error } = await this.supabase
         .from('upload_sessions')
         .insert({
@@ -24,11 +31,7 @@ export class UploadSessionManager {
           processed_records: 0,
           valid_records: 0,
           invalid_records: 0,
-          duplicate_records: 0,
-          processing_details: {
-            current_index: 0,
-            total: 0
-          }
+          duplicate_records: 0
         })
         .select()
         .single();
@@ -40,15 +43,13 @@ export class UploadSessionManager {
 
       Logger.debug('Upload session created', { sessionId: session.id });
 
-      // Create form data for the file upload
+      // Prepare form data for file upload
       const formData = new FormData();
-      
-      // Add the file directly without conversion
       formData.append('file', file);
       formData.append('organization', organization);
       formData.append('sessionId', session.id);
 
-      // Log the FormData contents
+      // Log form data for debugging
       const formDataEntries: Record<string, any> = {};
       formData.forEach((value, key) => {
         formDataEntries[key] = value instanceof Blob ? {
@@ -59,16 +60,15 @@ export class UploadSessionManager {
       });
       Logger.debug('FormData being sent', { formData: formDataEntries });
 
-      // Upload the file using the API route
+      // Upload file using API route
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
-      const responseData = await response.json();
-
       if (!response.ok) {
-        Logger.error('Failed to upload file', { 
+        const responseData = await response.json();
+        Logger.error('Upload failed', { 
           status: response.status,
           statusText: response.statusText,
           responseData
@@ -82,19 +82,20 @@ export class UploadSessionManager {
             errors: [{
               record: '',
               errors: [{ 
-                message: responseData.error || responseData.message || 'Failed to upload file',
+                message: responseData.message || 'خطأ في رفع الملف',
                 type: 'error'
               }]
             }]
           })
           .eq('id', session.id);
           
-        throw new Error(responseData.error || responseData.message || 'Failed to upload file');
+        throw new Error(responseData.message || 'خطأ في رفع الملف');
       }
 
       return session;
+
     } catch (error) {
-      Logger.error('Error creating upload session', { 
+      Logger.error('Error in upload process', { 
         error,
         stack: error instanceof Error ? error.stack : undefined,
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -109,227 +110,225 @@ export class UploadSessionManager {
     onError?: (errors: any[]) => void;
     onStatsUpdate?: (stats: { total: number; valid: number; invalid: number; duplicates: number }) => void;
     onCurrentRecord?: (record: string) => void;
-  }) {
+  }): () => void {
     Logger.debug('Setting up session subscription', { sessionId });
 
-    let retryCount = 0;
-    const maxRetries = 5;
-    const retryDelay = 1000;
-    let channel: RealtimeChannel | null = null;
-    let retryTimeout: NodeJS.Timeout | null = null;
-    let isCompleted = false;
-
-    const setupChannel = () => {
-      if (channel) {
-        channel.unsubscribe();
+    // Reset state
+    this.retryCount = 0;
+    this.isCompleted = false;
+    this.currentStatus = null;
+    
+    // Get initial session state
+    this.getInitialSession(sessionId).then(session => {
+      if (session) {
+        this.handleSessionUpdate(session, callbacks);
       }
+    });
 
-      Logger.debug('Creating channel', { sessionId, retryCount });
-
-      channel = this.supabase
-        .channel(`upload_session_${sessionId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'upload_sessions',
-            filter: `id=eq.${sessionId}`
-          },
-          (payload) => {
-            Logger.debug('Realtime update received', { 
-              sessionId, 
-              eventType: payload.eventType,
-              payload 
-            });
-
-            const data = payload.new as UploadSession;
-            Logger.debug('Session update received', { 
-              sessionId, 
-              status: data.status,
-              progress: data.processed_records,
-              total: data.total_records,
-              errors: data.errors?.length || 0,
-              payload: data
-            });
-
-            try {
-              // Reset retry count on successful update
-              retryCount = 0;
-
-              // Update progress
-              if (callbacks.onProgress) {
-                if (data.total_records > 0 && data.processed_records >= 0) {
-                  const progress = Math.round((data.processed_records / data.total_records) * 100);
-                  callbacks.onProgress(Math.min(progress, 100));
-                } else {
-                  callbacks.onProgress(0);
-                }
-              }
-
-              // Update stats
-              if (callbacks.onStatsUpdate) {
-                callbacks.onStatsUpdate({
-                  total: data.total_records || 0,
-                  valid: data.valid_records || 0,
-                  invalid: data.invalid_records || 0,
-                  duplicates: data.duplicate_records || 0
-                });
-              }
-
-              // Update current record
-              if (data.current_record && callbacks.onCurrentRecord) {
-                callbacks.onCurrentRecord(data.current_record);
-              }
-
-              // Update errors
-              if (data.errors && Array.isArray(data.errors) && callbacks.onError) {
-                callbacks.onError(data.errors);
-              }
-
-              // Update status - ensure we always update status last
-              if (callbacks.onStatusChange) {
-                const status = data.status.toLowerCase();
-                if (['completed', 'failed', 'processing', 'pending'].includes(status)) {
-                  callbacks.onStatusChange(status as UploadStatus);
-                  
-                  Logger.debug('Status changed', { 
-                    sessionId, 
-                    newStatus: status,
-                    stats: {
-                      total: data.total_records || 0,
-                      processed: data.processed_records || 0,
-                      valid: data.valid_records || 0,
-                      invalid: data.invalid_records || 0
-                    }
-                  });
-
-                  // If status is terminal, mark as completed and clean up
-                  if (status === 'completed' || status === 'failed') {
-                    isCompleted = true;
-                    Logger.debug('Session completed, cleaning up', { sessionId, status });
-                    cleanup(false); // Don't retry for completed sessions
-                  }
-                }
-              }
-            } catch (error) {
-              Logger.error('Error processing session update', { 
-                error,
-                sessionId,
-                payload: data
-              });
-            }
-          }
-        )
-        .subscribe((status) => {
-          Logger.debug('Channel subscription status', { status, sessionId });
-          
-          if (status === 'SUBSCRIBED') {
-            Logger.info('Successfully subscribed to channel', { sessionId });
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            Logger.error('Channel subscription failed', { status, sessionId });
-            handleReconnect();
-          }
-        });
-
-      return () => {
-        if (channel) {
-          Logger.debug('Unsubscribing from channel', { sessionId });
-          channel.unsubscribe();
-        }
-      };
-    };
-
-    const handleReconnect = () => {
-      if (isCompleted) {
-        Logger.debug('Session already completed, skipping reconnection', { sessionId });
-        return;
-      }
-
-      if (retryCount < maxRetries) {
-        retryCount++;
-        Logger.debug('Scheduling reconnection', { sessionId, retryCount, delay: retryDelay });
-        
-        if (retryTimeout) {
-          clearTimeout(retryTimeout);
-        }
-        
-        retryTimeout = setTimeout(() => {
-          Logger.debug('Attempting reconnection', { sessionId, retryCount });
-          setupChannel();
-        }, retryDelay * Math.pow(2, retryCount - 1));
-      } else {
-        Logger.error('Max retries reached', { sessionId });
-        if (callbacks.onStatusChange) {
-          callbacks.onStatusChange('failed');
-        }
-        cleanup(false);
-      }
-    };
-
-    const cleanup = (shouldRetry = true) => {
-      Logger.debug('Cleaning up session subscription', { 
-        sessionId,
-        isCompleted,
-        shouldRetry,
-        hasChannel: !!channel,
-        hasRetryTimeout: !!retryTimeout
-      });
-      
-      // Clear any pending retry timeouts
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-        retryTimeout = null;
-      }
-      
-      // Unsubscribe and close channel if it exists
-      if (channel) {
-        try {
-          channel.unsubscribe();
-          channel = null;
-        } catch (error) {
-          Logger.error('Error unsubscribing from channel', {
-            error,
-            sessionId
-          });
-        }
-      }
-
-      // Only schedule reconnection if explicitly requested and session not completed
-      if (shouldRetry && !isCompleted) {
-        handleReconnect();
-      }
-    };
-
-    // Initial setup
-    setupChannel();
+    // Setup real-time channel
+    this.setupChannel(sessionId, callbacks);
 
     // Return cleanup function
-    return () => cleanup(false);
+    return () => this.cleanup();
   }
 
-  unsubscribeFromSession(sessionId: string) {
-    Logger.debug('Unsubscribing from session', { sessionId });
-    this.supabase.channel(`upload_session_${sessionId}`).unsubscribe();
-  }
-
-  async getInitialSession(sessionId: string): Promise<UploadSession | null> {
+  private async getInitialSession(sessionId: string): Promise<UploadSession | null> {
     try {
-      const { data: session, error } = await this.supabase
+      const { data, error } = await this.supabase
         .from('upload_sessions')
         .select('*')
         .eq('id', sessionId)
         .single();
 
       if (error) {
-        Logger.error('Failed to get initial session', { error });
+        Logger.error('Failed to get initial session state', { error, sessionId });
         return null;
       }
 
-      return session;
+      return data;
     } catch (error) {
-      Logger.error('Error getting initial session', { error });
+      Logger.error('Error getting initial session state', { error, sessionId });
       return null;
     }
+  }
+
+  private setupChannel(sessionId: string, callbacks: any) {
+    if (this.channel) {
+      this.channel.unsubscribe();
+    }
+
+    Logger.debug('Creating channel', { sessionId, retryCount: this.retryCount });
+
+    this.channel = this.supabase
+      .channel('public:upload_sessions')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'upload_sessions',
+          filter: `id=eq.${sessionId}`
+        },
+        (payload) => {
+          const data = payload.new as UploadSession;
+          Logger.debug('Realtime update received', { 
+            sessionId, 
+            status: data.status,
+            progress: data.processed_records,
+            total: data.total_records
+          });
+
+          this.handleSessionUpdate(data, callbacks);
+        }
+      )
+      .subscribe((status) => {
+        Logger.debug('Channel subscription status', { status, sessionId });
+        
+        if (status === 'SUBSCRIBED') {
+          Logger.info('Successfully subscribed to channel', { sessionId });
+          this.retryCount = 0;
+        } else if (!this.isCompleted && (status === 'CLOSED' || status === 'CHANNEL_ERROR')) {
+          // Only log error if we're not completed
+          Logger.error('Channel subscription failed', { status, sessionId });
+          this.handleReconnect(sessionId, callbacks);
+        } else if (this.isCompleted && (status === 'CLOSED' || status === 'CHANNEL_ERROR')) {
+          // Just debug log if we're completed - this is expected
+          Logger.debug('Channel closed after completion', { status, sessionId });
+        }
+      });
+  }
+
+  private handleSessionUpdate(data: UploadSession, callbacks: any) {
+    try {
+      // Update progress
+      if (callbacks.onProgress && data.total_records > 0) {
+        const progress = Math.round((data.processed_records / data.total_records) * 100);
+        callbacks.onProgress(Math.min(progress, 100));
+      }
+
+      // Update stats
+      if (callbacks.onStatsUpdate) {
+        callbacks.onStatsUpdate({
+          total: data.total_records || 0,
+          valid: data.valid_records || 0,
+          invalid: data.invalid_records || 0,
+          duplicates: data.duplicate_records || 0
+        });
+      }
+
+      // Update current record
+      if (callbacks.onCurrentRecord && data.current_record) {
+        callbacks.onCurrentRecord(data.current_record);
+      }
+
+      // Update errors
+      if (callbacks.onError && data.errors && Array.isArray(data.errors)) {
+        callbacks.onError(data.errors);
+      }
+
+      // Update status last
+      if (callbacks.onStatusChange && data.status) {
+        const status = data.status.toLowerCase() as UploadStatus;
+        if (['completed', 'failed', 'processing', 'pending'].includes(status)) {
+          // Update current status before callback
+          const oldStatus = this.currentStatus;
+          this.currentStatus = status;
+          
+          if (oldStatus !== status) {
+            Logger.debug('Status changed', { 
+              sessionId: data.id,
+              oldStatus,
+              newStatus: status
+            });
+            callbacks.onStatusChange(status);
+          }
+          
+          if (status === 'completed' || status === 'failed') {
+            this.isCompleted = true;
+            Logger.debug('Session completed', { 
+              sessionId: data.id,
+              status,
+              stats: {
+                total: data.total_records,
+                valid: data.valid_records,
+                invalid: data.invalid_records,
+                duplicates: data.duplicate_records
+              }
+            });
+            this.cleanup();
+          }
+        }
+      }
+
+    } catch (error) {
+      Logger.error('Error processing session update', { 
+        error,
+        sessionId: data.id,
+        data
+      });
+    }
+  }
+
+  private handleReconnect(sessionId: string, callbacks: any) {
+    if (this.isCompleted) {
+      Logger.debug('Session already completed, skipping reconnection');
+      return;
+    }
+
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      const delay = this.retryDelay * Math.pow(2, this.retryCount - 1);
+      
+      Logger.debug('Scheduling reconnection', { 
+        sessionId, 
+        retryCount: this.retryCount,
+        delay 
+      });
+      
+      if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout);
+      }
+      
+      this.retryTimeout = setTimeout(() => {
+        if (!this.isCompleted) {
+          Logger.debug('Attempting reconnection', { sessionId, retryCount: this.retryCount });
+          this.setupChannel(sessionId, callbacks);
+        } else {
+          Logger.debug('Session completed during retry delay, skipping reconnection');
+        }
+      }, delay);
+    } else {
+      Logger.error('Max retries reached', { sessionId });
+      if (callbacks.onStatusChange) {
+        callbacks.onStatusChange('failed');
+      }
+      this.cleanup();
+    }
+  }
+
+  private cleanup() {
+    Logger.debug('Cleaning up session subscription', { 
+      isCompleted: this.isCompleted,
+      hasChannel: !!this.channel,
+      hasRetryTimeout: !!this.retryTimeout
+    });
+    
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
+    
+    if (this.channel) {
+      this.channel.unsubscribe();
+      this.channel = null;
+    }
+
+    // Reset state
+    this.currentStatus = null;
+    this.retryCount = 0;
+  }
+
+  unsubscribeFromSession() {
+    this.cleanup();
   }
 }

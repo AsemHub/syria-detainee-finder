@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabase.server"
 import { z } from "zod"
 import { Database } from "@/lib/database.types"
-import { normalizeNameForDb } from "@/lib/validation"
+import { normalizeNameForDb, validateGender, validateStatus } from "@/lib/validation"
 import Logger from "@/lib/logger"
+import { DetaineeGender, DetaineeStatus } from "@/lib/database.types"
 
 // In-memory store for rate limiting
 const submissionTimes = new Map<string, number[]>();
@@ -49,15 +50,15 @@ const submitSchema = z.object({
       .refine(val => !isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120, "Age must be between 0 and 120")
       .transform(val => val == null || val === undefined ? null : Number(val))
   ])
-  .nullable()
-  .optional()
-  .transform(val => val == null || val === undefined ? null : val),
-  gender: z.enum(["male", "female", "unknown"] as const),
-  status: z.enum(["in_custody", "missing", "released", "deceased", "unknown"] as const),
+    .nullable()
+    .optional(),
+  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "غير معروف"] as const),
+  gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const),
   contact_info: z.string()
-    .max(50, "Contact info must be less than 50 characters"),
+    .min(2, "Contact info must be at least 2 characters")
+    .max(200, "Contact info must be less than 200 characters"),
   additional_notes: z.string()
-    .max(2000, "Notes must be less than 2000 characters")
+    .max(1000, "Additional notes must be less than 1000 characters")
     .nullable()
     .optional(),
 });
@@ -77,42 +78,33 @@ export async function POST(request: Request) {
     }
 
     // Get client IP for rate limiting
-    const forwardedFor = request.headers.get('x-forwarded-for');
-    const ip = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+    const ip = request.headers.get("x-forwarded-for") || "unknown";
 
     if (isRateLimited(ip)) {
       return NextResponse.json(
-        { error: 'Too many submissions. Please try again later.' },
+        { error: "عدد كبير من المحاولات. يرجى المحاولة لاحقاً." },
         { status: 429 }
       );
     }
 
-    let body;
     try {
-      body = await request.json();
-      Logger.debug('Received request body:', body);
-    } catch (parseError) {
-      Logger.error('JSON parse error:', parseError);
-      return NextResponse.json(
-        { error: 'Invalid request body', details: 'Could not parse JSON' },
-        { status: 400 }
-      );
-    }
-    
-    try {
+      const body = await request.json();
+      Logger.debug(Object.entries(body).map(([k, v]) => `${k}=${v}`).join(", "), { action: "Received request body" });
+
       const validatedData = submitSchema.parse(body);
-      Logger.debug('Validated data:', validatedData);
-      
-      try {
-        Logger.info('Attempting database insert...');
-        
-        const now = new Date().toISOString();
-        
-        // Prepare the data for insert, ensuring all fields match the database schema
-        const insertData: DetaineeInsert = {
+      Logger.debug(Object.entries(validatedData).map(([k, v]) => `${k}=${v}`).join(", "), { action: "Validated data" });
+
+      Logger.info("Attempting database insert", { action: "Database Operation" });
+
+      const now = new Date().toISOString();
+      const normalized_name = normalizeNameForDb(validatedData.full_name);
+
+      const { error } = await supabaseServer
+        .from("detainees")
+        .insert({
+          original_name: validatedData.full_name,
           full_name: validatedData.full_name,
-          original_name: validatedData.full_name, // Store the original name
-          date_of_detention: validatedData.date_of_detention ?? null,
+          date_of_detention: validatedData.date_of_detention,
           last_seen_location: validatedData.last_seen_location,
           detention_facility: validatedData.detention_facility ?? null,
           physical_description: validatedData.physical_description ?? null,
@@ -122,58 +114,39 @@ export async function POST(request: Request) {
           contact_info: validatedData.contact_info,
           additional_notes: validatedData.additional_notes ?? null,
           last_update_date: now,
-          source_organization: 'Public' // Source organization is always 'Public' for public submissions
-        };
+          source_organization: "Public",
+        });
 
-        // Insert the data
-        const { data, error: insertError } = await supabaseServer
-          .from('detainees')
-          .insert(insertData)
-          .select()
-          .single();
-
-        if (insertError) {
-          Logger.error('Database error:', {
-            message: insertError.message,
-            code: insertError.code,
-            details: insertError.details,
-            hint: insertError.hint
-          });
-          return NextResponse.json(
-            { 
-              error: 'Database operation failed', 
-              details: insertError.message,
-              code: insertError.code,
-              hint: insertError.hint 
-            },
-            { status: 500 }
-          );
-        }
-
-        Logger.info('Database insert successful:', data);
-
-        // Record the submission time for rate limiting
-        const submissions = submissionTimes.get(ip) || [];
-        submissions.push(Date.now());
-        submissionTimes.set(ip, submissions);
-
-        return NextResponse.json({ success: true, data });
-      } catch (dbError) {
-        Logger.error('Database operation error:', dbError);
+      if (error) {
+        Logger.error("Database error", { error });
         return NextResponse.json(
-          { error: 'Database operation failed', details: String(dbError) },
+          { error: "فشل في حفظ المعلومات" },
           { status: 500 }
         );
       }
-    } catch (validationError) {
-      if (validationError instanceof z.ZodError) {
-        Logger.error('Validation error:', validationError.errors);
+
+      // Record successful submission time for rate limiting
+      const submissions = submissionTimes.get(ip) || [];
+      submissions.push(Date.now());
+      submissionTimes.set(ip, submissions);
+
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      Logger.error("Request error", { error });
+      if (error instanceof z.ZodError) {
+        const details = error.errors.map((err) => ({
+          path: err.path,
+          message: err.message,
+        }));
         return NextResponse.json(
-          { error: 'Validation failed', details: validationError.errors },
+          { error: "بيانات غير صالحة", details },
           { status: 400 }
         );
       }
-      throw validationError;
+      return NextResponse.json(
+        { error: "حدث خطأ أثناء معالجة الطلب" },
+        { status: 500 }
+      );
     }
   } catch (error) {
     Logger.error('Unexpected error:', error);

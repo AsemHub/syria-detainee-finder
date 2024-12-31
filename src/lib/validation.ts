@@ -1,337 +1,320 @@
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { DetaineeGender, DetaineeStatus } from './database.types';
+
+// Add custom parse format plugin
+dayjs.extend(customParseFormat);
 
 interface ValidationResult {
   errors: string[];
   isValid: boolean;
 }
 
-// Helper function to normalize Arabic text
-function normalizeArabicText(text: string): string {
+// Text normalization utilities
+export function normalizeArabicText(text: string): string {
   if (!text) return '';
   
   const normalized = text.trim()
     .normalize('NFKC') // Normalize to composed form
-    .replace(/[\u0623\u0625\u0622]/g, 'ا') // Normalize alef variations, but keep initial alef
+    .replace(/[\u0623\u0625\u0622]/g, 'ا') // Normalize alef variations
     .replace(/[\u0629]/g, 'ة') // Normalize taa marbouta
     .replace(/[\u064A\u0649]/g, 'ي') // Normalize yaa
     .replace(/\s+/g, ' ') // Normalize spaces
-    .trim()
-    .toLowerCase(); // Make case-insensitive
+    .trim();
 
   return normalized;
 }
 
-// Helper function to parse dates flexibly
-export function parseDate(dateStr: string): string | null {
-  if (!dateStr?.trim()) return null;
-
-  try {
-    // First try to parse as ISO format (YYYY-MM-DD)
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    if (isoMatch) {
-      const [_, year, month, day] = isoMatch;
-      // Validate components
-      const y = parseInt(year);
-      const m = parseInt(month);
-      const d = parseInt(day);
-      if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      }
-    }
-
-    // Remove any non-date characters
-    dateStr = dateStr.trim().replace(/[^\d-/\.]/g, '');
-
-    // Try different date formats
-    let parts: string[] = [];
-    
-    if (dateStr.includes('-')) {
-      parts = dateStr.split('-');
-    } else if (dateStr.includes('/')) {
-      parts = dateStr.split('/');
-    } else if (dateStr.includes('.')) {
-      parts = dateStr.split('.');
-    } else {
-      return null;
-    }
-
-    // Ensure we have exactly 3 parts
-    if (parts.length !== 3) return null;
-
-    // Clean and pad the parts
-    parts = parts.map(p => p.trim().padStart(2, '0'));
-
-    // If first part is 4 digits, assume YYYY-MM-DD
-    if (parts[0].length === 4) {
-      const [year, month, day] = parts;
-      const y = parseInt(year);
-      const m = parseInt(month);
-      const d = parseInt(day);
-      if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      }
-    }
-
-    // Otherwise assume DD-MM-YYYY
-    const [day, month, year] = parts;
-    let y = parseInt(year);
-    const m = parseInt(month);
-    const d = parseInt(day);
-
-    // If year is 2 digits, assume 20xx
-    if (year.length === 2) {
-      y = 2000 + y;
-    }
-
-    // Validate all components
-    if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      return `${y}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Date parsing error:', error);
-    return null;
-  }
+export function normalizeNameForDb(name: string): string {
+  return normalizeArabicText(name)
+    .replace(/[\u064B-\u065F]/g, '')  // Remove Arabic diacritics
+    .replace(/[أإآ]/g, 'ا')  // Normalize alef variations
+    .replace(/[ىئ]/g, 'ي')  // Normalize yaa variations
+    .replace(/[ؤ]/g, 'و')   // Normalize waw variations
+    .replace(/[ة]/g, 'ه')   // Normalize taa marbouta
+    .toLowerCase(); // Make case-insensitive
 }
 
-// Map Arabic gender terms to enum values
-const GENDER_VALUES = [
-  // Male variations
-  'ذكر',
-  'رجل',
-  'ذ',
-  'م',
-  'ولد',
-  'صبي',
-  'شاب',
-  'male',
-  // Female variations
-  'انثى',
-  'أنثى',
-  'انثي',
-  'أنثي',
-  'امرأة',
-  'مرأة',
-  'بنت',
-  'فتاة',
-  'ا',
-  'ف',
-  'female',
-  // Unknown variations
-  'غير معروف',
-  'مجهول',
-  'غير محدد',
-  'لا يوجد',
-  '-',
-  '؟',
-  'غ.م',
-  'unknown'
-];
+export function cleanupText(text: string): string {
+  return normalizeArabicText(text);
+}
 
-// Map Arabic status terms to enum values
-const STATUS_VALUES = [
-  // In custody variations
-  'معتقل',
-  'سجين',
-  'محتجز',
-  'قيد الاعتقال',
-  'رهن الاعتقال',
-  'موقوف',
-  'in_custody',
-  
-  // Missing variations
-  'مفقود',
-  'مختفي',
-  'مختفي قسريا',
-  'اختفاء قسري',
-  'غائب',
-  'لا يعرف مكانه',
-  'missing',
-  
-  // Released variations
-  'محرر',
-  'مطلق سراح',
-  'حر',
-  'تم الافراج',
-  'افراج',
-  'خروج',
-  'released',
-  
-  // Deceased variations
-  'متوفى',
-  'متوفي',
-  'توفى',
-  'توفي',
-  'ميت',
-  'استشهد',
-  'شهيد',
-  'قتل',
-  'قضى',
-  'قضي',
-  'deceased',
-  
-  // Unknown variations
-  'غير معروف',
-  'مجهول',
-  'غير محدد',
-  'لا يوجد معلومات',
-  'غير واضح',
-  '-',
-  '؟',
-  'غ.م',
-  'unknown'
-];
+// Date parsing utilities
+export function parseDate(dateStr: string): string | null {
+  if (!dateStr) return null;
 
-export function validateRecord(record: any): ValidationResult {
+  // Try parsing different date formats
+  const formats = [
+    'YYYY-MM-DD',
+    'DD-MM-YYYY',
+    'DD/MM/YYYY',
+    'YYYY/MM/DD'
+  ];
+
+  for (const format of formats) {
+    const date = dayjs(dateStr, format);
+    if (date.isValid()) {
+      return date.format('YYYY-MM-DD');
+    }
+  }
+
+  // Try parsing Arabic date format
+  const arabicMonths: { [key: string]: number } = {
+    'يناير': 1, 'كانون الثاني': 1,
+    'فبراير': 2, 'شباط': 2,
+    'مارس': 3, 'آذار': 3,
+    'أبريل': 4, 'نيسان': 4,
+    'مايو': 5, 'أيار': 5,
+    'يونيو': 6, 'حزيران': 6,
+    'يوليو': 7, 'تموز': 7,
+    'أغسطس': 8, 'آب': 8,
+    'سبتمبر': 9, 'أيلول': 9,
+    'أكتوبر': 10, 'تشرين الأول': 10,
+    'نوفمبر': 11, 'تشرين الثاني': 11,
+    'ديسمبر': 12, 'كانون الأول': 12
+  };
+
+  // Match Arabic date format (e.g., "15 شباط 2012")
+  const arabicDateRegex = /(\d{1,2})\s+([\u0600-\u06FF\s]+)\s+(\d{4})/;
+  const match = dateStr.match(arabicDateRegex);
+  
+  if (match) {
+    const [_, day, monthStr, year] = match;
+    const month = arabicMonths[monthStr.trim()];
+    
+    if (month) {
+      const date = dayjs(`${year}-${month}-${day}`, 'YYYY-M-D');
+      if (date.isValid()) {
+        return date.format('YYYY-MM-DD');
+      }
+    }
+  }
+
+  return null;
+}
+
+// Constants matching database constraints
+export const VALID_GENDERS = ['ذكر', 'أنثى', 'غير معروف'] as const;
+export const VALID_STATUSES = ['معتقل', 'مفقود', 'مطلق سراح', 'متوفى', 'غير معروف'] as const;
+
+// Gender mapping
+const GENDER_MAPPING: Record<string, typeof VALID_GENDERS[number]> = {
+  'male': 'ذكر',
+  'female': 'أنثى',
+  'unknown': 'غير معروف',
+  'ذكر': 'ذكر',
+  'أنثى': 'أنثى',
+  'غير معروف': 'غير معروف'
+};
+
+// Status mapping
+const STATUS_MAPPING: Record<string, typeof VALID_STATUSES[number]> = {
+  'detained': 'معتقل',
+  'missing': 'مفقود',
+  'released': 'مطلق سراح',
+  'deceased': 'متوفى',
+  'unknown': 'غير معروف',
+  'معتقل': 'معتقل',
+  'مفقود': 'مفقود',
+  'مطلق سراح': 'مطلق سراح',
+  'متوفى': 'متوفى',
+  'غير معروف': 'غير معروف'
+};
+
+export type Gender = typeof VALID_GENDERS[number];
+export type Status = typeof VALID_STATUSES[number];
+
+export function validateGender(gender: string): Gender {
+  if (!gender) return 'غير معروف';
+  
+  const normalizedGender = gender.toLowerCase().trim();
+  const mappedGender = GENDER_MAPPING[normalizedGender];
+  
+  return mappedGender || 'غير معروف';
+}
+
+export function validateStatus(status: string): Status {
+  if (!status) return 'غير معروف';
+  
+  const normalizedStatus = status.toLowerCase().trim();
+  const mappedStatus = STATUS_MAPPING[normalizedStatus];
+  
+  return mappedStatus || 'غير معروف';
+}
+
+// Header mappings for validation
+const HEADER_MAPPINGS: Record<string, string> = {
+  // English to internal field names
+  'full_name': 'full_name',
+  'date_of_detention': 'date_of_detention',
+  'last_seen_location': 'last_seen_location',
+  'detention_facility': 'detention_facility',
+  'physical_description': 'physical_description',
+  'age_at_detention': 'age_at_detention',
+  'gender': 'gender',
+  'status': 'status',
+  'contact_info': 'contact_info',
+  'additional_notes': 'additional_notes',
+  'organization': 'organization',
+  
+  // Arabic with underscores
+  'الاسم_الكامل': 'full_name',
+  'تاريخ_الاعتقال': 'date_of_detention',
+  'آخر_مكان': 'last_seen_location',
+  'مكان_الاحتجاز': 'detention_facility',
+  'الوصف_الجسدي': 'physical_description',
+  'العمر_عند_الاعتقال': 'age_at_detention',
+  'العمر': 'age_at_detention',
+  'الجنس_': 'gender',
+  'الجنس': 'gender',
+  'الحالة_': 'status',
+  'الحالة': 'status',
+  'معلومات_الاتصال': 'contact_info',
+  'ملاحظات_اضافية': 'additional_notes',
+  'ملاحظات': 'additional_notes',
+  'المنظمة_': 'organization',
+  'المنظمة': 'organization',
+  
+  // Arabic with spaces
+  'الاسم الكامل': 'full_name',
+  'تاريخ الاعتقال': 'date_of_detention',
+  'آخر مكان': 'last_seen_location',
+  'مكان الاحتجاز': 'detention_facility',
+  'الوصف الجسدي': 'physical_description',
+  'العمر عند الاعتقال': 'age_at_detention',
+  'الجنس ': 'gender',
+  'الحالة ': 'status',
+  'معلومات الاتصال': 'contact_info',
+  'ملاحظات اضافية': 'additional_notes',
+  'المنظمة ': 'organization'
+} as const;
+
+// Field name mappings for error messages
+const FIELD_NAMES_ARABIC: Record<string, string> = {
+  'full_name': 'الاسم الكامل',
+  'date_of_detention': 'تاريخ الاعتقال',
+  'last_seen_location': 'آخر مكان',
+  'detention_facility': 'مكان الاحتجاز',
+  'physical_description': 'الوصف الجسدي',
+  'age_at_detention': 'العمر عند الاعتقال',
+  'gender': 'الجنس',
+  'status': 'الحالة',
+  'contact_info': 'معلومات الاتصال',
+  'additional_notes': 'ملاحظات اضافية',
+  'organization': 'المنظمة'
+} as const;
+
+// Required fields for validation
+const REQUIRED_FIELDS = [
+  'full_name',
+  'date_of_detention',
+  'last_seen_location',
+  'gender',
+  'status',
+  'contact_info'
+] as const;
+
+// Helper function to check if a header is valid (in either language)
+export function isValidHeader(header: string): boolean {
+  return header in HEADER_MAPPINGS;
+}
+
+// Helper function to get the standardized header
+export function getStandardizedHeader(header: string): string {
+  const standardized = HEADER_MAPPINGS[header];
+  if (!standardized) {
+    throw new Error(`Invalid header: ${header}`);
+  }
+  return standardized;
+}
+
+// Update the validateHeaders function to be more flexible
+export function validateHeaders(headers: string[]): { isValid: boolean; missingHeaders: string[] } {
+  const standardizedHeaders = headers.map(header => {
+    try {
+      return getStandardizedHeader(header);
+    } catch {
+      return null;
+    }
+  });
+
+  const missingHeaders = REQUIRED_FIELDS.filter(
+    field => !standardizedHeaders.includes(field)
+  );
+
+  return {
+    isValid: missingHeaders.length === 0,
+    missingHeaders: missingHeaders.map(field => FIELD_NAMES_ARABIC[field] || field)
+  };
+}
+
+// Record validation function
+export function validateRecord(record: Record<string, string>): ValidationResult {
   const errors: string[] = [];
 
-  // Required fields validation with more descriptive messages
-  if (!record.full_name?.trim()) {
-    errors.push('الاسم الكامل مطلوب - الرجاء إدخال الاسم الكامل للشخص');
+  // Required fields validation
+  const requiredFields = ['full_name', 'last_seen_location', 'status', 'gender', 'contact_info'];
+  for (const field of requiredFields) {
+    if (!record[field] || record[field].trim() === '') {
+      errors.push(`الحقل "${FIELD_NAMES_ARABIC[field]}" مطلوب`);
+    }
   }
 
-  if (!record.last_seen_location?.trim()) {
-    errors.push('مكان آخر مشاهدة مطلوب - الرجاء تحديد آخر مكان تم فيه رؤية الشخص');
+  // Name validation
+  if (record.full_name) {
+    if (record.full_name.length < 2) {
+      errors.push('الاسم قصير جداً');
+    } else if (record.full_name.length > 50) {
+      errors.push('الاسم طويل جداً');
+    }
   }
 
-  if (!record.contact_info?.trim()) {
-    errors.push('معلومات الاتصال مطلوبة - الرجاء إدخال رقم هاتف أو معلومات اتصال أخرى');
+  // Contact info validation
+  if (record.contact_info) {
+    if (record.contact_info.length < 2) {
+      errors.push('معلومات الاتصال قصيرة جداً');
+    } else if (record.contact_info.length > 200) {
+      errors.push('معلومات الاتصال طويلة جداً');
+    }
   }
 
-  if (!record.date_of_detention) {
-    errors.push('تاريخ الاعتقال مطلوب - الرجاء إدخال تاريخ الاعتقال بصيغة YYYY-MM-DD');
+  // Location validation
+  if (record.last_seen_location && record.last_seen_location.length > 200) {
+    errors.push('الموقع طويل جداً');
   }
 
-  // Age validation with better error messages
-  if (record.age_at_detention === null || record.age_at_detention === undefined || record.age_at_detention === '') {
-    errors.push('العمر عند الاعتقال مطلوب - الرجاء إدخال عمر الشخص عند الاعتقال');
-  } else if (!validateAge(record.age_at_detention)) {
-    errors.push('العمر عند الاعتقال غير صالح - يجب أن يكون رقماً بين 0 و 120');
+  // Age validation
+  if (record.age_at_detention && !validateAge(record.age_at_detention)) {
+    errors.push('العمر يجب أن يكون بين 0 و 120');
   }
 
-  // Gender validation with clearer messages
-  if (!record.gender) {
-    errors.push('الجنس مطلوب - الرجاء تحديد جنس الشخص (ذكر/أنثى)');
-  } else if (!['male', 'female', 'unknown'].includes(record.gender)) {
-    errors.push('قيمة الجنس غير صالحة - الرجاء استخدام "ذكر" أو "أنثى"');
+  // Status validation
+  if (record.status && !validateStatus(record.status)) {
+    errors.push('الحالة غير صالحة');
   }
 
-  // Status validation with clearer messages
-  if (!record.status) {
-    errors.push('الحالة مطلوبة - الرجاء تحديد حالة الشخص (معتقل/مفقود)');
-  } else if (!['in_custody', 'missing', 'deceased', 'released', 'unknown'].includes(record.status)) {
-    errors.push('قيمة الحالة غير صالحة - الرجاء استخدام "معتقل" أو "مفقود"');
+  // Gender validation
+  if (record.gender && !validateGender(record.gender)) {
+    errors.push('الجنس غير صالح');
+  }
+
+  // Optional field validations
+  if (record.detention_facility && record.detention_facility.length > 200) {
+    errors.push('اسم مكان الاعتقال طويل جداً');
+  }
+
+  if (record.physical_description && record.physical_description.length > 500) {
+    errors.push('الوصف الجسدي طويل جداً');
+  }
+
+  if (record.additional_notes && record.additional_notes.length > 1000) {
+    errors.push('الملاحظات الإضافية طويلة جداً');
   }
 
   return {
     errors,
     isValid: errors.length === 0
   };
-}
-
-export function normalizeNameForDb(name: string): string {
-  return name?.trim() || '';
-}
-
-export function cleanupText(text: string | null): string | null {
-  return text?.trim() || null;
-}
-
-export function validateGender(gender: string): DetaineeGender {
-  if (!gender?.trim()) return 'unknown';
-  
-  const normalizedInput = normalizeArabicText(gender.trim().toLowerCase());
-
-  // Special case handling for single-letter abbreviations
-  if (/^[ذمف]$/.test(normalizedInput)) {
-    if (normalizedInput === 'ذ' || normalizedInput === 'م') return 'male';
-    if (normalizedInput === 'ف') return 'female';
-  }
-
-  // Check for male terms
-  const maleTerms = ['ذكر', 'رجل', 'ولد', 'صبي', 'شاب', 'male', 'م', 'ذ'];
-  for (const term of maleTerms) {
-    const normalizedTerm = normalizeArabicText(term);
-    if (normalizedTerm === normalizedInput || 
-        normalizedInput.includes(normalizedTerm) || 
-        normalizedTerm.includes(normalizedInput)) {
-      return 'male';
-    }
-  }
-
-  // Check for female terms
-  const femaleTerms = ['انثى', 'أنثى', 'امرأة', 'مرأة', 'بنت', 'فتاة', 'female', 'ف', 'انثي'];
-  for (const term of femaleTerms) {
-    const normalizedTerm = normalizeArabicText(term);
-    if (normalizedTerm === normalizedInput || 
-        normalizedInput.includes(normalizedTerm) || 
-        normalizedTerm.includes(normalizedInput)) {
-      return 'female';
-    }
-  }
-
-  return 'unknown';
-}
-
-export function validateStatus(status: string): DetaineeStatus {
-  if (!status?.trim()) return 'unknown';
-  
-  const normalizedInput = normalizeArabicText(status.trim().toLowerCase());
-  
-  // Map of status values to their standard form with more precise patterns
-  const statusMap = {
-    'deceased': [
-      'متوفي', 'متوفى', 'متوف', 'توفي', 'توفى', 'توف', 'ميت', 'شهيد', 
-      'قتل', 'قضى', 'قضي', 'استشهد', 'وفاة', 'متوفاة'
-    ],
-    'in_custody': [
-      'معتقل', 'معتق', 'سجين', 'محتجز', 'موقوف', 'قيد الاعتقال', 
-      'رهن الاعتقال', 'اعتقال', 'في المعتقل', 'في السجن'
-    ],
-    'missing': [
-      'مفقود', 'مختفي', 'مختفى', 'مختف', 'اختفاء', 'اختفاء قسري', 
-      'مختفي قسريا', 'غائب', 'مفقودة', 'مختفية'
-    ],
-    'released': [
-      'محرر', 'افراج', 'افرج', 'حر', 'حرية', 'خروج', 'خرج', 
-      'اطلاق سراح', 'تحرر', 'مطلق سراح', 'محررة'
-    ],
-    'unknown': [
-      'غير معروف', 'مجهول', 'غير محدد', 'لا يوجد', 'غ.م', 
-      'unknown', '-', '؟', 'غير معروفة'
-    ]
-  };
-
-  // Helper function to check if input matches any pattern
-  const matchesPattern = (input: string, pattern: string): boolean => {
-    const normalizedPattern = normalizeArabicText(pattern);
-    // For short patterns (3 chars or less), require exact match
-    if (normalizedPattern.length <= 3) {
-      return normalizedPattern === input;
-    }
-    // For longer patterns, allow partial matches
-    return input.includes(normalizedPattern) || normalizedPattern.includes(input);
-  };
-
-  // First try exact match
-  for (const [standardStatus, patterns] of Object.entries(statusMap)) {
-    if (patterns.some(pattern => normalizeArabicText(pattern) === normalizedInput)) {
-      return standardStatus as DetaineeStatus;
-    }
-  }
-
-  // Then try partial matches with the helper function
-  for (const [standardStatus, patterns] of Object.entries(statusMap)) {
-    if (patterns.some(pattern => matchesPattern(normalizedInput, pattern))) {
-      return standardStatus as DetaineeStatus;
-    }
-  }
-
-  // Log unmatched status for debugging
-  console.log(`Unmatched status: ${status} (normalized: ${normalizedInput})`);
-  
-  return 'unknown';
 }
 
 export function validateAge(age: string | number | null | undefined): boolean {

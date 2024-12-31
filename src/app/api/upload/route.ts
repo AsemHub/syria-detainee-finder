@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import Papa from 'papaparse';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { validateRecord, validateGender, validateStatus, normalizeNameForDb, cleanupText, parseDate } from '@/lib/validation';
+import { createClient, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+import { validateRecord, validateGender, validateStatus, normalizeNameForDb, cleanupText, parseDate, validateHeaders, getStandardizedHeader } from '@/lib/validation';
 import { Database, DetaineeStatus, DetaineeGender } from '@/lib/database.types';
 import Logger, { LogContext } from "@/lib/logger";
+import { v4 as uuidv4 } from 'uuid';
 
 // Configure as serverless function with increased memory and timeout
 export const runtime = 'nodejs'; // Use Node.js runtime instead of Edge
@@ -52,118 +53,71 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET,DELETE,PATCH,POST,PUT',
   'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
   'Access-Control-Allow-Credentials': 'true'
-};
+} as const;
+
+// Helper function to create response with CORS headers
+function createResponse(data: any, status: number) {
+  return NextResponse.json(data, { 
+    status,
+    headers: corsHeaders
+  });
+}
 
 // Handle OPTIONS preflight request
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return createResponse({}, 200);
 }
 
-export async function POST(req: Request) {
-  Logger.info('Starting file upload process');
-  
+export async function POST(request: Request) {
   try {
-    // Add CORS headers to the response
-    const headers = { ...corsHeaders };
-
-    // Log request details
+    Logger.info('Starting file upload process');
     Logger.debug('Upload request received', {
-      method: req.method,
-      contentType: req.headers.get('content-type'),
-      url: req.url
+      method: request.method,
+      contentType: request.headers.get('content-type'),
+      url: request.url
     });
 
-    const formData = await req.formData();
+    // Parse form data
+    const formData = await request.formData();
     Logger.info('Form data received');
 
-    // Log FormData entries
-    const formDataEntries: Record<string, any> = {};
-    formData.forEach((value, key) => {
-      if (typeof value === 'object' && value !== null && 'name' in value && 'type' in value) {
-        formDataEntries[key] = {
-          type: value.type,
-          size: 'size' in value ? value.size : 'N/A',
-          name: value.name
-        };
-      } else {
-        formDataEntries[key] = value;
+    // Extract file and organization from form data
+    const file = formData.get('file') as File;
+    const organization = formData.get('organization') as string;
+    const sessionId = formData.get('sessionId') as string;
+
+    Logger.debug('FormData contents', {
+      formData: {
+        organization,
+        sessionId,
+        file: file ? {
+          type: file.type,
+          size: file.size,
+          name: file.name
+        } : null
       }
     });
-    Logger.debug('FormData contents', { formData: formDataEntries });
 
-    // Get and validate organization
-    const organization = formData.get('organization')?.toString();
-    if (!organization) {
-      Logger.error('Organization missing from request');
-      return NextResponse.json(
-        { error: 'Organization is required' },
-        { status: 400, headers }
+    // Validate file entry
+    if (!file || !organization || !sessionId) {
+      Logger.error('Missing required fields', { file: !!file, organization: !!organization, sessionId: !!sessionId });
+      return createResponse(
+        { error: 'Missing required fields' },
+        400
       );
     }
 
-    // Get and validate session ID
-    const sessionId = formData.get('sessionId')?.toString();
-    if (!sessionId) {
-      Logger.error('Session ID missing from request');
-      return NextResponse.json(
-        { error: 'Session ID is required' },
-        { status: 400, headers }
-      );
-    }
-
-    // Get and validate file
-    const fileEntry = formData.get('file');
-    
-    // Type guard function to check if value is a File-like object
-    const isFileLike = (value: any): value is File => {
-      return (
-        value !== null &&
-        typeof value === 'object' &&
-        'name' in value &&
-        'type' in value &&
-        'text' in value &&
-        typeof value.text === 'function'
-      );
-    };
-    
-    // Log the type information
     Logger.debug('File upload details', {
-      fileEntryType: fileEntry ? typeof fileEntry : 'undefined',
-      hasRequiredProps: fileEntry ? isFileLike(fileEntry) : false,
-      fileValue: fileEntry ? {
-        type: isFileLike(fileEntry) ? fileEntry.type : typeof fileEntry,
-        size: isFileLike(fileEntry) ? fileEntry.size : 'N/A',
-        name: isFileLike(fileEntry) ? fileEntry.name : 'N/A'
-      } : 'undefined',
+      fileEntryType: typeof file,
+      hasRequiredProps: 'size' in file && 'name' in file,
+      fileValue: {
+        type: file.type,
+        size: file.size,
+        name: file.name
+      },
       sessionId,
       organization
     });
-
-    if (!fileEntry || !isFileLike(fileEntry)) {
-      const error = !fileEntry ? 'File is required' : 'Invalid file format - expected a File';
-      Logger.error('File validation failed', {
-        error,
-        fileEntryType: fileEntry ? typeof fileEntry : 'undefined',
-        hasRequiredProps: fileEntry ? isFileLike(fileEntry) : false
-      });
-      
-      // Update session status
-      await updateSession(supabase, sessionId, {
-        status: 'failed',
-        errors: [{
-          record: '',
-          errors: [{ message: error, type: 'error' }]
-        }]
-      });
-      
-      return NextResponse.json(
-        { error, message: `Upload failed with error: ${error}` },
-        { status: 400, headers }
-      );
-    }
-
-    // At this point, TypeScript knows fileEntry is a File-like object
-    const file = fileEntry;
 
     Logger.info('File and organization data extracted', {
       fileName: file.name,
@@ -171,269 +125,118 @@ export async function POST(req: Request) {
       organization
     });
 
-    // Validate file type
-    const validMimeTypes = [
-      'text/csv',
-      'application/vnd.ms-excel',  // Excel CSV files
-      'application/csv',
-      'application/x-csv',
-      'text/x-csv',
-      'text/comma-separated-values'
-    ];
+    // Upload file to storage
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${uuidv4()}_${file.name}`;
+    
+    // Convert file to buffer and force text/csv content type
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const { data: fileData, error: uploadError } = await supabase.storage
+      .from('csv-uploads')
+      .upload(fileName, fileBuffer, {
+        contentType: 'text/csv',
+        cacheControl: '3600',
+        upsert: false
+      });
 
-    if (!validMimeTypes.includes(file.type)) {
-      Logger.error('Invalid file type', { type: file.type });
-      return NextResponse.json(
-        { error: 'Invalid file type. Please upload a CSV file.' },
-        { status: 400 }
+    if (uploadError) {
+      Logger.error('Failed to upload file', { uploadError });
+      return createResponse(
+        { error: 'Failed to upload file', details: uploadError.message },
+        500
       );
     }
 
-    try {
-      const fileName = `${sessionId}_${file.name}`;
-      const fileBuffer = Buffer.from(await file.arrayBuffer());
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('csv-uploads')
+      .getPublicUrl(fileName);
 
-      // Force the content type to text/csv for Supabase storage
-      const { error: uploadError } = await supabase.storage
-        .from('csv-uploads')
-        .upload(fileName, fileBuffer, {
-          contentType: 'text/csv',  // Always use text/csv for Supabase storage
-          cacheControl: '3600',
-          upsert: false
-        });
+    // Update session with file URL
+    const { error: updateError } = await supabase
+      .from('upload_sessions')
+      .update({ file_url: publicUrl })
+      .eq('id', sessionId);
 
-      if (uploadError) {
-        Logger.error('Failed to upload file to storage', { 
-          error: uploadError,
-          fileName,
-          sessionId 
-        });
-        
-        await updateSession(supabase, sessionId, {
-          status: 'failed',
-          errors: [{
-            record: '',
-            errors: [{ 
-              message: 'Failed to upload file to storage: ' + uploadError.message,
-              type: 'error'
-            }]
-          }]
-        });
-        
-        return NextResponse.json(
-          { error: 'Failed to upload file to storage', details: uploadError.message },
-          { status: 500, headers }
-        );
-      }
-
-      // Get public URL for the uploaded file
-      const { data: { publicUrl } } = supabase.storage
-        .from('csv-uploads')
-        .getPublicUrl(fileName);
-
-      // Update session with file URL
-      await updateSession(supabase, sessionId, {
-        file_url: publicUrl
-      });
-
-      Logger.debug('File uploaded to storage', { 
-        fileName,
-        publicUrl,
-        sessionId
-      });
-    } catch (error) {
-      Logger.error('Unexpected error uploading to storage', {
-        error,
-        sessionId
-      });
-      
-      await updateSession(supabase, sessionId, {
-        status: 'failed',
-        errors: [{
-          record: '',
-          errors: [{ 
-            message: 'Unexpected error uploading file: ' + (error instanceof Error ? error.message : 'Unknown error'),
-            type: 'error'
-          }]
-        }]
-      });
-      
-      return NextResponse.json(
-        { error: 'Unexpected error uploading file' },
-        { status: 500, headers }
+    if (updateError) {
+      Logger.error('Failed to update session', { updateError });
+      return createResponse(
+        { error: 'Failed to update session', details: updateError.message },
+        500
       );
     }
+
+    Logger.debug('Session updated', {
+      sessionId,
+      updates: { file_url: publicUrl },
+    });
+
+    Logger.debug('File uploaded to storage', {
+      fileName,
+      publicUrl,
+      sessionId
+    });
 
     // Read file content as text
     const fileContent = await file.text();
-    Logger.info('File content read successfully', { 
-      sessionId,
-      contentLength: fileContent.length 
-    });
     
-    // Parse CSV
-    const { data: records, errors: parseErrors } = Papa.parse(fileContent, {
+    Logger.debug('File content received', { 
+      contentLength: fileContent.length,
+      sessionId
+    });
+
+    // Parse CSV content
+    const csvResult = Papa.parse(fileContent, {
       header: true,
+      transformHeader: (header) => getStandardizedHeader(header),
+      transform: (value) => cleanCsvValue(value),
       skipEmptyLines: true,
-      transformHeader: (header) => {
-        Logger.debug('Transforming header', { header });
-        const headerMap: { [key: string]: string } = {
-          'الاسم الكامل': 'full_name',
-          'الجنس': 'gender',
-          'العمر عند الاعتقال': 'age_at_detention',
-          'تاريخ الاعتقال': 'detention_date',
-          'مكان آخر مشاهدة': 'last_seen_location',
-          'الحالة': 'status',
-          'معلومات الاتصال': 'contact_info',
-          'ملاحظات': 'notes'
-        };
-        const normalizedHeader = header.trim();
-        const mappedHeader = headerMap[normalizedHeader] || normalizedHeader;
-        Logger.debug('Header mapped', { 
-          original: header,
-          normalized: normalizedHeader,
-          mapped: mappedHeader 
-        });
-        return mappedHeader;
-      },
-      transform: (value) => {
-        const cleaned = cleanCsvValue(value);
-        Logger.debug('Transformed value', { 
-          original: value,
-          cleaned 
-        });
-        return cleaned;
-      },
+    }) as { data: Record<string, string>[]; meta: Papa.ParseMeta };
+
+    Logger.debug('CSV parsing complete', {
+      rowCount: csvResult.data.length,
+      fields: csvResult.meta.fields,
+      firstRow: csvResult.data[0],
+      sessionId
     });
 
-    if (parseErrors.length > 0) {
-      Logger.error('CSV parsing failed', { 
-        parseErrors,
-        sessionId 
-      });
-      
-      await updateSession(supabase, sessionId, {
-        status: 'failed',
-        errors: parseErrors.map(err => ({
-          record: '',
-          errors: [{ message: err.message, type: 'error' }]
-        }))
-      });
-      
-      return NextResponse.json(
-        { error: 'Failed to parse CSV file', parseErrors },
-        { status: 400, headers }
-      );
-    }
-
-    // Transform records to match database schema
-    const transformedRecords = records.map((record: any) => ({
-      full_name: record.full_name,
-      gender: record.gender,
-      age_at_detention: record.age_at_detention,
-      detention_date: record.detention_date,
-      last_seen_location: record.last_seen_location,
-      status: record.status,
-      contact_info: record.contact_info,
-      notes: record.notes
-    }));
-
-    Logger.info('Starting background processing', { 
-      sessionId,
-      recordCount: transformedRecords.length 
-    });
-
-    // Process all records at once
-    try {
-      await processRecords(transformedRecords, organization, sessionId, supabaseAdmin);
-      
-      Logger.info('Processing completed successfully', { sessionId });
-
-      await updateSession(supabase, sessionId, {
-        status: 'completed',
-        completed_at: new Date().toISOString()
-      });
-      
-      return NextResponse.json(
-        { message: 'Upload completed successfully', sessionId },
-        { status: 200, headers }
-      );
-
-    } catch (error) {
-      Logger.error('Error processing records', { 
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack
-        } : error,
-        sessionId 
+    // Process records asynchronously
+    processRecords(csvResult.data, organization, sessionId, supabaseAdmin)
+      .catch(error => {
+        Logger.error('Failed to process records', { error, sessionId });
       });
 
-      await updateSession(supabase, sessionId, {
-        status: 'failed',
-        error_message: error instanceof Error ? error.message : 'Failed to process records'
-      });
-
-      return NextResponse.json(
-        { error: 'Failed to process records' },
-        { status: 500, headers }
-      );
-    }
+    return createResponse(
+      { message: 'Upload started', sessionId },
+      202
+    );
 
   } catch (error) {
-    Logger.error('Upload failed', { 
+    Logger.error('Error in upload process', { 
       error,
       stack: error instanceof Error ? error.stack : undefined,
       message: error instanceof Error ? error.message : 'Unknown error'
     });
-    
-    return NextResponse.json(
-      { error: 'Upload failed', message: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500, headers: corsHeaders }
+
+    return createResponse(
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      500
     );
   }
 }
 
-// Process records in the background
+// Helper function to process CSV data
 async function processRecords(
-  records: any[],
+  records: Record<string, string>[],
   organization: string,
   sessionId: string,
-  supabase: SupabaseClient<Database>
-) {
+  supabase: SupabaseClient
+): Promise<void> {
   let processedRecords = 0;
   let validRecordsCount = 0;
   let invalidRecordsCount = 0;
-  let errors: { record: string, errors: { message: string, type: string }[] }[] = [];
-  let duplicateRecords = 0;
-  const processedNames = new Set<string>();
-
-  // Arabic field name mapping
-  const FIELD_MAPPING: Record<string, string> = {
-    'الاسم الكامل': 'full_name',
-    'الجنس': 'gender',
-    'العمر عند الاعتقال': 'age_at_detention',
-    'تاريخ الاعتقال': 'detention_date',
-    'مكان آخر مشاهدة': 'last_seen_location',
-    'الحالة': 'status',
-    'معلومات الاتصال': 'contact_info',
-    'ملاحظات': 'notes'
-  };
-
-  // Arabic status mapping
-  const STATUS_MAPPING: Record<string, DetaineeStatus> = {
-    'معتقل': 'in_custody',
-    'مفقود': 'missing',
-    'متوفى': 'deceased',
-    'مطلق سراح': 'released',
-    'غير معروف': 'unknown'
-  };
-
-  // Arabic gender mapping
-  const GENDER_MAPPING: Record<string, DetaineeGender> = {
-    'ذكر': 'male',
-    'أنثى': 'female',
-    'غير معروف': 'unknown'
-  };
+  let duplicateRecordsCount = 0;
+  const errors: Array<{ record: string; errors: Array<{ message: string; type: string }> }> = [];
 
   try {
     // Initial session update
@@ -443,235 +246,222 @@ async function processRecords(
     });
 
     for (const record of records) {
+      let currentRecord = record.full_name || `Row ${processedRecords + 1}`;
+      processedRecords++;
+
       try {
-        processedRecords++;
-
-        // Process record logic...
-        const cleanedRecord = {
-          // Map Arabic field names to English
-          full_name: normalizeNameForDb(record[FIELD_MAPPING['الاسم الكامل']]),
-          source_organization: organization,
-          upload_session_id: sessionId,
-
-          // Map gender and status to English enums
-          gender: GENDER_MAPPING[record[FIELD_MAPPING['الجنس']]] || 'unknown',
-          status: STATUS_MAPPING[record[FIELD_MAPPING['الحالة']]] || 'unknown',
-          original_name: record[FIELD_MAPPING['الاسم الكامل']],
-
-          // Format date properly
-          date_of_detention: record[FIELD_MAPPING['تاريخ الاعتقال']] ? 
-            parseDate(record[FIELD_MAPPING['تاريخ الاعتقال']]) : null,
-          last_update_date: new Date().toISOString(),
-
-          // Optional text fields
-          last_seen_location: cleanupText(record[FIELD_MAPPING['مكان آخر مشاهدة']]) || '',
-          contact_info: cleanupText(record[FIELD_MAPPING['معلومات الاتصال']]) || '',
-          additional_notes: cleanupText(record[FIELD_MAPPING['ملاحظات']]) || '',
-
-          // Optional numeric fields
-          age_at_detention: record[FIELD_MAPPING['العمر عند الاعتقال']] ? 
-            parseInt(record[FIELD_MAPPING['العمر عند الاعتقال']]) : null
-        };
-
-        // Check for duplicates within this upload
-        const normalizedName = cleanedRecord.full_name.toLowerCase();
-        if (processedNames.has(normalizedName)) {
-          duplicateRecords++;
-          errors.push({
-            record: cleanedRecord.full_name,
-            errors: [{ message: 'هذا السجل مكرر', type: 'duplicate' }]
-          });
-          continue;
+        // Map record fields using the validation module's standardization function
+        const mappedRecord: Record<string, string> = {};
+        for (const [key, value] of Object.entries(record)) {
+          const standardizedKey = getStandardizedHeader(key);
+          mappedRecord[standardizedKey] = cleanCsvValue(value);
         }
+
+        // Update session with current record
+        await updateSession(supabase, sessionId, {
+          current_record: currentRecord,
+          processed_records: processedRecords,
+          last_update: new Date().toISOString()
+        });
 
         // Validate the record
-        const validation = validateRecord(cleanedRecord);
+        const validation = validateRecord(mappedRecord);
         if (!validation.isValid) {
           invalidRecordsCount++;
-          
-          // Map each validation error to the UI format
-          validation.errors.forEach(errorMsg => {
-            errors.push({
-              record: cleanedRecord.full_name || `Row ${processedRecords}`,
-              errors: [{ message: errorMsg, type: 'validation' }]
-            });
+          errors.push({
+            record: currentRecord,
+            errors: validation.errors.map(error => ({
+              message: error,
+              type: 'validation'
+            }))
           });
-          
-          // Store invalid record for reference with better error handling
-          try {
-            Logger.debug('Attempting to insert invalid record', {
-              sessionId,
-              organization,
-              fileName: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
-              errors: validation.errors
-            });
-
-            const { data: insertedRecord, error: invalidRecordError } = await supabaseAdmin
-              .from('invalid_records')
-              .insert({
-                session_id: sessionId,
-                organization: organization,
-                file_name: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
-                invalid_records: validation.errors,
-                timestamp: new Date().toISOString(),
-                created_at: new Date().toISOString()
-              })
-              .select()
-              .single();
-
-            if (invalidRecordError) {
-              Logger.error('Failed to insert invalid record', {
-                error: invalidRecordError.message,
-                code: invalidRecordError.code,
-                details: invalidRecordError.details,
-                hint: invalidRecordError.hint,
-                record: cleanedRecord.full_name || `Row ${processedRecords}`,
-                sessionId
-              });
-            } else {
-              Logger.debug('Invalid record stored successfully', {
-                recordId: insertedRecord?.id,
-                record: cleanedRecord.full_name || `Row ${processedRecords}`,
-                errors: validation.errors
-              });
-            }
-
-            // Also update the upload session with the error using stored procedure
-            const { error: sessionError } = await supabaseAdmin.rpc('update_session_errors', {
-              p_session_id: sessionId,
-              p_record_name: record[FIELD_MAPPING['الاسم الكامل']] || `Row ${processedRecords}`,
-              p_errors: validation.errors
-            });
-
-            if (sessionError) {
-              Logger.error('Failed to update session with error', {
-                error: sessionError.message,
-                sessionId
-              });
-            }
-          } catch (invalidInsertError) {
-            Logger.error('Error storing invalid record', {
-              error: invalidInsertError instanceof Error ? {
-                message: invalidInsertError.message,
-                stack: invalidInsertError.stack
-              } : invalidInsertError,
-              record: cleanedRecord.full_name || `Row ${processedRecords}`,
-              sessionId
-            });
-          }
-          
           continue;
         }
 
-        try {
-          // Insert valid record into detainees table
-          const { data: detainee, error: insertError } = await supabase
-            .from('detainees')
-            .insert({
-              ...cleanedRecord,
-              original_data: record
-            })
-            .select()
-            .single();
+        // Check for duplicates using normalized name
+        const { data: duplicateCheck, error: duplicateError } = await supabase
+          .rpc('normalize_arabic_text', { input_text: mappedRecord.full_name })
+          .single();
 
-          if (insertError) {
-            Logger.error('Database insert failed', { 
-              error: insertError.message,
-              record: cleanedRecord.full_name
-            });
-            throw insertError;
-          }
+        if (duplicateError) {
+          throw new Error(`Error normalizing name: ${duplicateError.message}`);
+        }
 
-          validRecordsCount++;
-          processedNames.add(normalizedName);
+        const normalizedName = duplicateCheck;
+        
+        const { data: existingRecords, error: searchError } = await supabase
+          .from('detainees')
+          .select('id, full_name')
+          .eq('normalized_name', normalizedName)
+          .limit(1);
 
-          // Update session periodically (every 5 records)
-          if (processedRecords % 5 === 0) {
-            await updateSession(supabase, sessionId, {
-              processed_records: processedRecords,
-              valid_records: validRecordsCount,
-              invalid_records: invalidRecordsCount,
-              duplicate_records: duplicateRecords,
-              processing_details: {
-                current_index: processedRecords - 1,
-                current_name: record.full_name,
-                total: records.length
-              },
-              last_update: new Date().toISOString()
-            });
-          }
+        if (searchError) {
+          throw new Error(`Error checking for duplicates: ${searchError.message}`);
+        }
 
-        } catch (error) {
-          Logger.error('Processing error', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-            record: cleanedRecord.full_name
-          });
-          invalidRecordsCount++;
+        if (existingRecords && existingRecords.length > 0) {
+          duplicateRecordsCount++;
           errors.push({
-            record: cleanedRecord.full_name,
-            errors: [{ 
-              message: error instanceof Error ? error.message : 'خطأ غير معروف',
-              type: 'database'
+            record: currentRecord,
+            errors: [{
+              message: 'سجل مكرر: يوجد شخص بنفس الاسم',
+              type: 'duplicate'
             }]
           });
+          continue;
         }
-      } catch (recordError) {
-        Logger.error('Record processing error', {
-          error: recordError instanceof Error ? recordError.message : 'Unknown error',
-          record: record.full_name
-        });
+
+        // Insert the record into the database
+        const { data: insertedDetainee, error: insertError } = await supabase
+          .from('detainees')
+          .insert({
+            full_name: mappedRecord.full_name,
+            original_name: mappedRecord.full_name,
+            normalized_name: normalizedName,
+            date_of_detention: parseDate(mappedRecord.date_of_detention),
+            last_seen_location: mappedRecord.last_seen_location || '',
+            detention_facility: mappedRecord.detention_facility || null,
+            physical_description: mappedRecord.physical_description || null,
+            age_at_detention: mappedRecord.age_at_detention ? parseInt(mappedRecord.age_at_detention) : null,
+            gender: validateGender(mappedRecord.gender),
+            status: validateStatus(mappedRecord.status),
+            contact_info: mappedRecord.contact_info || '',
+            additional_notes: mappedRecord.additional_notes || null,
+            source_organization: organization,
+            last_update_date: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          if (insertError.message.includes('unique constraint')) {
+            duplicateRecordsCount++;
+            errors.push({
+              record: currentRecord,
+              errors: [{
+                message: 'سجل مكرر: يوجد شخص بنفس الاسم',
+                type: 'duplicate'
+              }]
+            });
+            continue;
+          }
+          throw new Error(`Error inserting record: ${insertError.message}`);
+        }
+
+        // Track the uploaded record
+        if (insertedDetainee) {
+          try {
+            const { error: trackingError } = await supabase
+              .from('csv_upload_records')
+              .insert({
+                session_id: sessionId,
+                detainee_id: insertedDetainee.id,
+                row_number: processedRecords,
+                original_data: record
+              });
+
+            if (trackingError) {
+              Logger.error('Error tracking uploaded record:', { trackingError });
+            }
+          } catch (trackingError) {
+            Logger.error('Error tracking uploaded record:', { trackingError });
+          }
+        }
+
+        validRecordsCount++;
+      } catch (error) {
         invalidRecordsCount++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error processing record';
+        
+        // Store invalid record
+        try {
+          const { error: invalidRecordError } = await supabase
+            .from('invalid_records')
+            .insert({
+              session_id: sessionId,
+              record_data: record,
+              errors: [{
+                message: errorMessage,
+                type: 'error'
+              }]
+            });
+
+          if (invalidRecordError) {
+            Logger.error('Error storing invalid record:', { invalidRecordError });
+          }
+        } catch (storeError) {
+          Logger.error('Error storing invalid record:', { storeError });
+        }
+
+        errors.push({
+          record: currentRecord,
+          errors: [{
+            message: errorMessage,
+            type: 'error'
+          }]
+        });
       }
     }
 
-    // Final session update with completion status
+    // Final session update
     await updateSession(supabase, sessionId, {
       status: 'completed',
       processed_records: processedRecords,
-      total_records: records.length,
       valid_records: validRecordsCount,
       invalid_records: invalidRecordsCount,
-      duplicate_records: duplicateRecords,
+      duplicate_records: duplicateRecordsCount,
       errors: errors,
       completed_at: new Date().toISOString()
     });
 
-    Logger.info('Processing completed', {
-      organization,
-      totalRecords: records.length,
-      validRecords: validRecordsCount,
-      invalidRecords: invalidRecordsCount,
-      duplicates: duplicateRecords,
-      errors: errors.length
-    });
-
   } catch (error) {
-    Logger.error('Processing failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      sessionId
-    });
-
-    // Update session with error state
+    Logger.error('Error processing records', { error, sessionId });
+    
     await updateSession(supabase, sessionId, {
       status: 'failed',
-      error_message: error instanceof Error ? error.message : 'Unknown error',
-      completed_at: new Date().toISOString(),
-      processed_records: processedRecords,
-      total_records: records.length,
-      valid_records: validRecordsCount,
-      invalid_records: invalidRecordsCount,
-      duplicate_records: duplicateRecords,
-      errors: errors
+      error_message: error instanceof Error ? error.message : 'Unknown error processing records',
+      errors: [{
+        record: '',
+        errors: [{
+          message: error instanceof Error ? error.message : 'Unknown error processing records',
+          type: 'error'
+        }]
+      }]
     });
+    
+    throw error;
   }
+}
+
+// Types for session updates
+interface SessionUpdate {
+  file_name?: string;
+  file_url?: string;
+  file_size?: number;
+  mime_type?: string;
+  uploaded_by?: string;
+  organization?: string;
+  total_records?: number;
+  processed_records?: number;
+  valid_records?: number;
+  invalid_records?: number;
+  duplicate_records?: number;
+  status?: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  errors?: Array<{ record: string; errors: Array<{ message: string; type: string }> }>;
+  current_record?: string;
+  completed_at?: string;
+  updated_at?: string;
+  last_update?: string;
+  processing_details?: Record<string, unknown>;
 }
 
 // Helper function to update session state
 async function updateSession(
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient,
   sessionId: string,
-  updates: any
-) {
+  updates: Partial<SessionUpdate>
+): Promise<void> {
   try {
     // Always include timestamp for status changes
     const updatesWithTimestamp = {
@@ -679,29 +469,22 @@ async function updateSession(
       ...(updates.status && { updated_at: new Date().toISOString() })
     };
 
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from('upload_sessions')
       .update(updatesWithTimestamp)
       .eq('id', sessionId);
 
-    if (error) {
-      Logger.error('Failed to update session', {
-        error: error.message,
-        sessionId,
-        updates: updatesWithTimestamp
-      });
-      throw error;
+    if (updateError) {
+      throw updateError;
     }
 
-    // Log successful updates
     Logger.debug('Session updated', {
       sessionId,
-      status: updates.status,
-      processed: updates.processed_records,
+      updates: updatesWithTimestamp,
       total: updates.total_records
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     Logger.error('Session update error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       sessionId,

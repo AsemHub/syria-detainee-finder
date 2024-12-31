@@ -6,8 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type DetaineeStatus = 'in_custody' | 'missing' | 'released' | 'deceased' | 'unknown';
-export type DetaineeGender = 'male' | 'female' | 'unknown';
+export type DetaineeStatus = 'معتقل' | 'مفقود' | 'مطلق سراح' | 'متوفى' | 'غير معروف';
+export type DetaineeGender = 'ذكر' | 'أنثى' | 'غير معروف';
 export type DocumentCategory = 'identification' | 'detention_record' | 'witness_statement' | 'medical_record' | 'legal_document' | 'photo' | 'correspondence' | 'other';
 export type DocumentType = 'csv_upload' | 'supporting_document' | 'media';
 export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';

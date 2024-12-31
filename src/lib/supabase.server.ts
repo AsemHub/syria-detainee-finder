@@ -141,6 +141,24 @@ function maintainCache() {
   }
 }
 
+// Status mapping between Arabic and English
+const STATUS_MAP = {
+  // English to Arabic
+  'in_custody': 'معتقل',
+  'missing': 'مفقود',
+  'released': 'مطلق سراح',
+  'deceased': 'متوفى',
+  'unknown': 'غير معروف'
+} as const;
+
+// Gender mapping between English and Arabic
+const GENDER_MAP = {
+  // English to Arabic
+  'male': 'ذكر',
+  'female': 'أنثى',
+  'unknown': 'غير معروف'
+} as const;
+
 export async function performSearch({
   query,
   pageSize = 20,
@@ -158,14 +176,18 @@ export async function performSearch({
   try {
     const normalizedSearchText = normalizeArabicText(query);
     
+    // Map English status and gender to Arabic for database query
+    const mappedStatus = detentionStatus ? STATUS_MAP[detentionStatus as keyof typeof STATUS_MAP] : undefined;
+    const mappedGender = gender ? GENDER_MAP[gender as keyof typeof GENDER_MAP] : undefined;
+    
     const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
       search_params: {
         query: normalizedSearchText,
         pageSize: pageSize,
         pageNumber: pageNumber,
         estimateTotal: estimateTotal,
-        detentionStatus: detentionStatus,
-        gender: gender,
+        detentionStatus: mappedStatus,
+        gender: mappedGender,
         ageMin: ageMin,
         ageMax: ageMax,
         location: location,

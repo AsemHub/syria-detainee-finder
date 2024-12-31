@@ -139,8 +139,8 @@ export function UploadForm() {
 
   useEffect(() => {
     return () => {
-      if (sessionId) {
-        sessionManager.unsubscribeFromSession(sessionId);
+      if (sessionId && sessionManager) {
+        sessionManager.unsubscribeFromSession();
       }
     };
   }, [sessionId, sessionManager]);

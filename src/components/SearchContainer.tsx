@@ -49,7 +49,7 @@ const STATUS_MAP = {
     // Arabic
     'معتقل': 'in_custody',
     'مفقود': 'missing',
-    'محرر': 'released',
+    'مطلق سراح': 'released',
     'متوفى': 'deceased',
     'غير معروف': 'unknown',
     // English
@@ -68,34 +68,29 @@ function normalizeStatus(status: string | null): DetaineeStatus {
 }
 
 function getStatusVariant(status: string | null): "default" | "secondary" | "success" | "destructive" | "warning" | "deceased" {
-    const normalizedStatus = normalizeStatus(status);
-
-    switch (normalizedStatus) {
-        case 'missing':
-            return 'destructive';
+    switch (normalizeStatus(status)) {
         case 'in_custody':
             return 'warning';
-        case 'deceased':
+        case 'missing':
             return 'destructive';
         case 'released':
             return 'success';
+        case 'deceased':
+            return 'deceased';
         case 'unknown':
-            return 'secondary';
         default:
             return 'default';
     }
 }
 
 function getStatusDisplay(status: string | null): string {
-    const normalizedStatus = normalizeStatus(status);
-
-    switch (normalizedStatus) {
+    switch (normalizeStatus(status)) {
         case 'in_custody':
-            return 'قيد الاعتقال';
+            return 'معتقل';
         case 'missing':
             return 'مفقود';
         case 'released':
-            return 'محرر';
+            return 'مطلق سراح';
         case 'deceased':
             return 'متوفى';
         case 'unknown':
@@ -325,11 +320,7 @@ export function SearchContainer() {
                                         {result.gender && (
                                             <div className="flex gap-3 text-sm items-center">
                                                 <User2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>الجنس: {
-                                                    result.gender === 'male' ? 'ذكر' : 
-                                                    result.gender === 'female' ? 'أنثى' : 
-                                                    'غير محدد'
-                                                }</span>
+                                                <span>الجنس: {result.gender}</span>
                                             </div>
                                         )}
                                         {result.physical_description && (

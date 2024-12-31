@@ -1,45 +1,60 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase.server';
 import { Detainee } from '@/types';
+import { normalizeNameForDb } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
     const detainee: Detainee = await request.json();
     
-    // Perform exact match search first
+    // Validate input
+    if (!detainee.full_name?.trim()) {
+      return NextResponse.json(
+        { error: 'Full name is required' },
+        { status: 400 }
+      );
+    }
+
+    // Normalize name for search
+    const normalizedName = normalizeNameForDb(detainee.full_name);
+    
+    // Perform exact match search first using the normalized_name column
     const exactMatches = await supabaseServer
-      .rpc('search_detainees_enhanced', {
-        search_params: {
-          query: detainee.full_name,
-          page_size: 10,
-          estimate_total: false
-        }
-      });
+      .from('detainees')
+      .select()
+      .eq('normalized_name', normalizedName)
+      .limit(10);
+
+    if (exactMatches.error) {
+      console.error('Error in exact match search:', exactMatches.error);
+      throw new Error('Search failed');
+    }
 
     // If no exact matches, try fuzzy search
-    if (!exactMatches.data || !Array.isArray(exactMatches.data) || exactMatches.data.length === 0) {
-      const fuzzyMatches = await supabaseServer
-        .rpc('search_detainees_enhanced', {
-          search_params: {
-            query: detainee.full_name,
-            page_size: 10,
-            estimate_total: false
-          }
-        });
+    if (!exactMatches.data || exactMatches.data.length === 0) {
+      const { data: fuzzyMatches, error: fuzzyError } = await supabaseServer
+        .from('detainees')
+        .select()
+        .textSearch('search_vector', normalizedName, {
+          type: 'plain',
+          config: 'arabic'
+        })
+        .limit(10);
+
+      if (fuzzyError) {
+        console.error('Error in fuzzy match search:', fuzzyError);
+        throw new Error('Search failed');
+      }
 
       return NextResponse.json({
-        matches: {
-          exact: [],
-          similar: fuzzyMatches.data || []
-        }
+        exactMatches: [],
+        fuzzyMatches: fuzzyMatches || []
       });
     }
 
     return NextResponse.json({
-      matches: {
-        exact: exactMatches.data || [],
-        similar: []
-      }
+      exactMatches: exactMatches.data,
+      fuzzyMatches: []
     });
   } catch (error) {
     console.error('Error checking for duplicates:', error);

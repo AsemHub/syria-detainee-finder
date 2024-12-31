@@ -42,6 +42,7 @@ import { ar } from "date-fns/locale"
 import { DatePickerInput } from "@/components/ui/date-picker";
 import dayjs from "dayjs";
 import 'dayjs/locale/ar';
+import { DetaineeGender, DetaineeStatus } from "@/lib/database.types"
 
 const formSchema = z.object({
   full_name: z.string()
@@ -53,21 +54,24 @@ const formSchema = z.object({
     .max(200, "يجب أن يكون الموقع أقل من 200 حرف"),
   detention_facility: z.string()
     .max(200, "يجب أن يكون اسم المنشأة أقل من 200 حرف")
-    .optional(),
+    .optional()
+    .transform(val => val || ""),
   physical_description: z.string()
     .max(500, "يجب أن يكون الوصف أقل من 500 حرف")
-    .optional(),
+    .optional()
+    .transform(val => val || ""),
   age_at_detention: z.string()
     .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "العمر يجب أن يكون بين 0 و 120")
     .optional(),
-  status: z.enum(["missing", "in_custody", "released", "deceased", "unknown"]),
-  gender: z.enum(["male", "female", "unknown"]),
+  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "غير معروف"] as const),
+  gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const),
   contact_info: z.string()
-    .max(200, "يجب أن تكون معلومات الاتصال أقل من 200 حرف")
-    .optional(),
+    .min(2, "معلومات الاتصال مطلوبة")
+    .max(200, "يجب أن تكون معلومات الاتصال أقل من 200 حرف"),
   additional_notes: z.string()
     .max(1000, "يجب أن تكون الملاحظات الإضافية أقل من 1000 حرف")
-    .optional(),
+    .optional()
+    .transform(val => val || ""),
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -81,12 +85,15 @@ interface DetaineeMatch {
 }
 
 export function SubmitForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [potentialMatches, setPotentialMatches] = useState<{
-    exact: DetaineeMatch[]
-    similar: DetaineeMatch[]
+    exactMatches: DetaineeMatch[]
+    fuzzyMatches: DetaineeMatch[]
   } | null>(null)
+  const [formData, setFormData] = useState<FormData | null>(null)
+  const [isSubmitConfirmed, setIsSubmitConfirmed] = useState(false)
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -96,8 +103,8 @@ export function SubmitForm() {
       detention_facility: "",
       physical_description: "",
       age_at_detention: "",
-      status: "missing",
-      gender: "male",
+      status: "مفقود",
+      gender: "ذكر",
       contact_info: "",
       additional_notes: "",
     },
@@ -112,8 +119,8 @@ export function SubmitForm() {
       detention_facility: "",
       physical_description: "",
       age_at_detention: "",
-      status: "missing",
-      gender: "male",
+      status: "مفقود",
+      gender: "ذكر",
       contact_info: "",
       additional_notes: "",
     })
@@ -140,16 +147,28 @@ export function SubmitForm() {
       }
 
       const data = await response.json()
-      setPotentialMatches(data.matches)
+      setPotentialMatches(data)
       
-      if (data.matches.exact.length > 0 || data.matches.similar.length > 0) {
+      // Only block submission if there are exact matches
+      if (data.exactMatches.length > 0) {
         toast({
-          title: "تم العثور على سجلات مشابهة",
-          description: "يرجى مراجعة السجلات المطابقة قبل المتابعة",
+          title: "تم العثور على سجل مطابق",
+          description: "يوجد سجل بنفس الاسم بالضبط. لا يمكن المتابعة.",
           duration: 4000,
         });
         return true;
       }
+      
+      // Show warning for fuzzy matches but allow proceeding
+      if (data.fuzzyMatches.length > 0) {
+        toast({
+          title: "تم العثور على سجلات مشابهة",
+          description: "يرجى مراجعة السجلات المشابهة قبل المتابعة",
+          duration: 4000,
+        });
+        return 'fuzzy';
+      }
+      
       return false;
     } catch (error) {
       console.error("Duplicate check error:", error)
@@ -168,14 +187,28 @@ export function SubmitForm() {
   async function onSubmit(values: FormData) {
     if (isSubmitting || isChecking) return
     
+    // Reset confirmation state
+    setIsSubmitConfirmed(false)
+    setFormData(values)
+    
     // Check for duplicates first
     const hasDuplicates = await checkDuplicates(values.full_name)
     
-    if (hasDuplicates) {
-      // Show the duplicates dialog
+    if (hasDuplicates === true) {
+      // Exact matches - block submission
       return
     }
     
+    if (hasDuplicates === 'fuzzy' && !isSubmitConfirmed) {
+      // Show dialog for fuzzy matches
+      return
+    }
+    
+    // No duplicates or confirmed to proceed
+    await submitForm(values)
+  }
+
+  const submitForm = async (values: FormData) => {
     setIsSubmitting(true)
     toast({
       title: "جاري الإرسال...",
@@ -321,11 +354,12 @@ export function SubmitForm() {
             name="detention_facility"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>مكان الاعتقال</FormLabel>
+                <FormLabel>مكان الاحتجاز</FormLabel>
                 <FormControl>
                   <Input 
-                    placeholder="اسم السجن أو مركز الاعتقال" 
+                    placeholder="أدخل مكان الاحتجاز" 
                     {...field} 
+                    value={field.value || ""}
                     className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
                   />
                 </FormControl>
@@ -348,11 +382,11 @@ export function SubmitForm() {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="missing">مفقود</SelectItem>
-                      <SelectItem value="in_custody">معتقل</SelectItem>
-                      <SelectItem value="released">محرر</SelectItem>
-                      <SelectItem value="deceased">متوفى</SelectItem>
-                      <SelectItem value="unknown">غير معروف</SelectItem>
+                      <SelectItem value="معتقل">معتقل</SelectItem>
+                      <SelectItem value="مفقود">مفقود</SelectItem>
+                      <SelectItem value="مطلق سراح">مطلق سراح</SelectItem>
+                      <SelectItem value="متوفى">متوفى</SelectItem>
+                      <SelectItem value="غير معروف">غير معروف</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -373,9 +407,9 @@ export function SubmitForm() {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="male">ذكر</SelectItem>
-                      <SelectItem value="female">أنثى</SelectItem>
-                      <SelectItem value="unknown">غير معروف</SelectItem>
+                      <SelectItem value="ذكر">ذكر</SelectItem>
+                      <SelectItem value="أنثى">أنثى</SelectItem>
+                      <SelectItem value="غير معروف">غير معروف</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -392,9 +426,10 @@ export function SubmitForm() {
                 <FormLabel>الوصف الجسدي</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="وصف المظهر الجسدي، علامات مميزة، إلخ..."
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
+                    placeholder="أدخل الوصف الجسدي"
                     {...field}
+                    value={field.value || ""}
+                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
                   />
                 </FormControl>
                 <FormMessage />
@@ -407,7 +442,7 @@ export function SubmitForm() {
             name="contact_info"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>معلومات الاتصال</FormLabel>
+                <FormLabel>معلومات الاتصال*</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="رقم هاتف أو بريد إلكتروني للتواصل" 
@@ -416,7 +451,7 @@ export function SubmitForm() {
                   />
                 </FormControl>
                 <FormDescription>
-                  سيتم استخدام هذه المعلومات للتواصل في حالة وجود معلومات جديدة
+                  معلومات الاتصال مطلوبة للتواصل في حالة وجود معلومات جديدة
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -431,9 +466,10 @@ export function SubmitForm() {
                 <FormLabel>ملاحظات إضافية</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder="أي معلومات إضافية قد تكون مفيدة..."
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
+                    placeholder="أدخل ملاحظات إضافية"
                     {...field}
+                    value={field.value || ""}
+                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
                   />
                 </FormControl>
                 <FormMessage />
@@ -457,6 +493,89 @@ export function SubmitForm() {
           )}
         </Button>
       </form>
+
+      <Dialog open={potentialMatches !== null} onOpenChange={(open) => {
+        if (!open) {
+          setPotentialMatches(null)
+          setFormData(null)
+          setIsSubmitConfirmed(false)
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>سجلات مشابهة</DialogTitle>
+            <DialogDescription>
+              {potentialMatches?.exactMatches.length 
+                ? "تم العثور على سجل مطابق تماماً. لا يمكن المتابعة."
+                : "تم العثور على السجلات التالية التي قد تكون مطابقة. يرجى مراجعتها قبل المتابعة."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {potentialMatches?.exactMatches.length ? (
+              <div>
+                <h3 className="font-semibold mb-2">تطابق تام:</h3>
+                <div className="space-y-2">
+                  {potentialMatches.exactMatches.map((match) => (
+                    <div key={match.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                      <p className="font-semibold">{match.full_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {match.status} • {match.last_seen_location}
+                        {match.date_of_detention && ` • ${match.date_of_detention}`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {potentialMatches?.fuzzyMatches.length ? (
+              <div>
+                <h3 className="font-semibold mb-2">تطابق محتمل:</h3>
+                <div className="space-y-2">
+                  {potentialMatches.fuzzyMatches.map((match) => (
+                    <div key={match.id} className="p-3 bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg">
+                      <p className="font-semibold">{match.full_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {match.status} • {match.last_seen_location}
+                        {match.date_of_detention && ` • ${match.date_of_detention}`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter className="sm:justify-start space-x-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setPotentialMatches(null)
+                setFormData(null)
+                setIsSubmitConfirmed(false)
+              }}
+              className="w-full sm:w-auto"
+            >
+              إغلاق
+            </Button>
+            {!potentialMatches?.exactMatches.length && potentialMatches?.fuzzyMatches.length ? (
+              <Button
+                onClick={async () => {
+                  if (formData) {
+                    setIsSubmitConfirmed(true)
+                    setPotentialMatches(null)
+                    await submitForm(formData)
+                  }
+                }}
+                className="w-full sm:w-auto bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
+              >
+                متابعة التقديم
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Form>
   )
 }
