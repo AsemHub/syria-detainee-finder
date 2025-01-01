@@ -269,7 +269,10 @@ export function SearchContainer() {
                             isLoading={isLoading}
                         />
                     </div>
-                    <SearchFilters filters={filters} onFiltersChange={handleFiltersChange} />
+                    <SearchFilters 
+                        filters={filters} 
+                        onFiltersChangeAction={handleFiltersChange} 
+                    />
                 </div>
             </div>
 
