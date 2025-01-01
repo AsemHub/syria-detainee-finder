@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase.server';
-import { Detainee } from '@/types';
+import type { Database } from '@/lib/database.types';
 import { normalizeNameForDb } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
-    const detainee: Detainee = await request.json();
+    const detainee: Database['public']['Tables']['detainees']['Row'] = await request.json();
     
     // Validate input
     if (!detainee.full_name?.trim()) {

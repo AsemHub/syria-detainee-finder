@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
-import { UploadError } from "@/types/upload"
+import { UploadError, ValidationError } from '@/lib/database.types'
 import { Button } from "../ui/button"
 import { Download } from "lucide-react"
 
@@ -93,7 +93,7 @@ export function UploadErrors({ errors, onDownloadReport }: UploadErrorsProps) {
               {error.record ? `السجل: ${error.record}` : 'خطأ في الملف'}
             </h4>
             <ul className="list-disc list-inside space-y-1">
-              {error.errors.map((err, errIndex) => (
+              {error.errors.map((err: ValidationError, errIndex: number) => (
                 <li key={errIndex} className="text-sm text-destructive">
                   {getErrorMessage(err)}
                 </li>

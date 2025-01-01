@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -23,7 +23,7 @@ export interface SearchFilters {
 
 interface SearchFiltersProps {
   filters: SearchFilters
-  onFiltersChange: (filters: SearchFilters) => void
+  onFiltersChangeAction: (filters: SearchFilters) => void
 }
 
 interface SimpleSelectProps {
@@ -81,7 +81,7 @@ function SimpleSelect({ value, onChange, placeholder, options }: SimpleSelectPro
   )
 }
 
-export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) {
+export function SearchFilters({ filters, onFiltersChangeAction }: SearchFiltersProps) {
   const { toast } = useToast()
   const [localFilters, setLocalFilters] = useState<SearchFilters>({
     status: filters.status || undefined,
@@ -147,15 +147,15 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
     setLocalFilters(newFilters);
   };
 
-  const applyFilters = () => {
-    onFiltersChange(localFilters);
+  const applyFilters = useCallback(() => {
+    onFiltersChangeAction(localFilters);
     setIsSheetOpen(false);
     toast({
       title: "تم تطبيق الفلاتر",
       description: "تم تحديث نتائج البحث وفقاً للفلاتر المحددة",
       duration: 2000,
     });
-  };
+  }, [localFilters, onFiltersChangeAction]);
 
   const clearFilters = () => {
     const emptyFilters: SearchFilters = {
@@ -169,7 +169,7 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
       detentionFacility: ''
     };
     setLocalFilters(emptyFilters);
-    onFiltersChange(emptyFilters);
+    onFiltersChangeAction(emptyFilters);
     toast({
       title: "تم إعادة تعيين الفلاتر",
       description: "تم مسح جميع الفلاتر وتحديث نتائج البحث",
@@ -190,163 +190,199 @@ export function SearchFilters({ filters, onFiltersChange }: SearchFiltersProps) 
     { value: 'female', label: 'أنثى' }
   ]
 
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (localFilters.status) count++;
+    if (localFilters.gender) count++;
+    if (localFilters.dateFrom) count++;
+    if (localFilters.dateTo) count++;
+    if (localFilters.ageMin !== undefined) count++;
+    if (localFilters.ageMax !== undefined) count++;
+    if (localFilters.location) count++;
+    if (localFilters.detentionFacility) count++;
+    return count;
+  };
+
+  const activeFiltersCount = getActiveFiltersCount();
+
+  const filterButtonClass = cn(
+    "relative inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold",
+    {
+      "bg-primary text-primary-foreground hover:bg-primary/90": activeFiltersCount > 0,
+      "bg-secondary text-secondary-foreground hover:bg-secondary/80": activeFiltersCount === 0
+    }
+  );
+
   return (
-    <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-      <SheetTrigger asChild>
-        <Button variant="outline" size="lg" className="gap-2">
-          <SlidersHorizontal className="w-4 h-4" />
-          <span>فلترة النتائج</span>
-        </Button>
-      </SheetTrigger>
-      <SheetContent 
-        side="right" 
-        className="w-full sm:max-w-lg p-0 flex flex-col h-[100svh] overflow-hidden"
-        style={{ height: viewportHeight ? `${viewportHeight}px` : '100svh' }}
+    <>
+      <Button
+        variant="secondary"
+        onClick={() => setIsSheetOpen(true)}
+        className={filterButtonClass}
       >
-        {/* Header - Fixed height */}
-        <div className="flex-none p-4 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-          <SheetClose className="absolute left-4 top-4">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </SheetClose>
-          <div className="pr-4">
-            <SheetTitle>فلترة النتائج</SheetTitle>
-            <SheetDescription>
-              استخدم هذه الخيارات لتضييق نطاق البحث
-            </SheetDescription>
+        <SlidersHorizontal className="h-4 w-4" />
+        فلترة النتائج
+        {activeFiltersCount > 0 && (
+          <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+            {activeFiltersCount}
+          </span>
+        )}
+      </Button>
+
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetTrigger asChild>
+          <div />
+        </SheetTrigger>
+        <SheetContent 
+          side="right" 
+          className="w-full sm:max-w-lg p-0 flex flex-col h-[100svh] overflow-hidden"
+          style={{ height: viewportHeight ? `${viewportHeight}px` : '100svh' }}
+        >
+          {/* Header - Fixed height */}
+          <div className="flex-none p-4 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+            <SheetClose className="absolute left-4 top-4">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </SheetClose>
+            <div className="pr-4">
+              <SheetTitle>فلترة النتائج</SheetTitle>
+              <SheetDescription>
+                استخدم هذه الخيارات لتضييق نطاق البحث
+              </SheetDescription>
+            </div>
           </div>
-        </div>
-        
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            applyFilters();
-          }} className="space-y-4 p-4">
-            <div className="space-y-2">
-              <Label>الحالة</Label>
-              <SimpleSelect
-                value={localFilters.status}
-                onChange={(value) => handleFilterChange('status', value)}
-                placeholder="اختر الحالة"
-                options={statusOptions}
-              />
-            </div>
+          
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              applyFilters();
+            }} className="space-y-4 p-4">
+              <div className="space-y-2">
+                <Label>الحالة</Label>
+                <SimpleSelect
+                  value={localFilters.status}
+                  onChange={(value) => handleFilterChange('status', value)}
+                  placeholder="اختر الحالة"
+                  options={statusOptions}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>الجنس</Label>
-              <SimpleSelect
-                value={localFilters.gender}
-                onChange={(value) => handleFilterChange('gender', value as DetaineeGender)}
-                placeholder="اختر الجنس"
-                options={genderOptions}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label>الجنس</Label>
+                <SimpleSelect
+                  value={localFilters.gender}
+                  onChange={(value) => handleFilterChange('gender', value as DetaineeGender)}
+                  placeholder="اختر الجنس"
+                  options={genderOptions}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>تاريخ الاعتقال</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">من</Label>
-                  <Input
-                    type="date"
-                    value={localFilters.dateFrom || ''}
-                    onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                    className="touch-manipulation"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">إلى</Label>
-                  <Input
-                    type="date"
-                    value={localFilters.dateTo || ''}
-                    onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                    className="touch-manipulation"
-                  />
+              <div className="space-y-2">
+                <Label>تاريخ الاعتقال</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">من</Label>
+                    <Input
+                      type="date"
+                      value={localFilters.dateFrom || ''}
+                      onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                      className="touch-manipulation"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">إلى</Label>
+                    <Input
+                      type="date"
+                      value={localFilters.dateTo || ''}
+                      onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                      className="touch-manipulation"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>العمر عند الاعتقال</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">من</Label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    max={100}
-                    value={localFilters.ageMin ?? ''}
-                    onChange={(e) => handleFilterChange('ageMin', e.target.value)}
-                    className="touch-manipulation"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">إلى</Label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    min={0}
-                    max={100}
-                    value={localFilters.ageMax ?? ''}
-                    onChange={(e) => handleFilterChange('ageMax', e.target.value)}
-                    className="touch-manipulation"
-                  />
+              <div className="space-y-2">
+                <Label>العمر عند الاعتقال</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">من</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      max={100}
+                      value={localFilters.ageMin ?? ''}
+                      onChange={(e) => handleFilterChange('ageMin', e.target.value)}
+                      className="touch-manipulation"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">إلى</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={0}
+                      max={100}
+                      value={localFilters.ageMax ?? ''}
+                      onChange={(e) => handleFilterChange('ageMax', e.target.value)}
+                      className="touch-manipulation"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label>آخر موقع معروف</Label>
-              <Input
-                type="text"
-                value={localFilters.location || ''}
-                onChange={(e) => handleFilterChange('location', e.target.value)}
-                placeholder="المدينة أو المنطقة"
-                className="touch-manipulation"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label>آخر موقع معروف</Label>
+                <Input
+                  type="text"
+                  value={localFilters.location || ''}
+                  onChange={(e) => handleFilterChange('location', e.target.value)}
+                  placeholder="المدينة أو المنطقة"
+                  className="touch-manipulation"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label>مكان الاحتجاز</Label>
-              <Input
-                type="text"
-                value={localFilters.detentionFacility || ''}
-                onChange={(e) => handleFilterChange('detentionFacility', e.target.value)}
-                placeholder="السجن أو المعتقل"
-                className="touch-manipulation"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label>مكان الاحتجاز</Label>
+                <Input
+                  type="text"
+                  value={localFilters.detentionFacility || ''}
+                  onChange={(e) => handleFilterChange('detentionFacility', e.target.value)}
+                  placeholder="السجن أو المعتقل"
+                  className="touch-manipulation"
+                />
+              </div>
 
-            {/* Spacer for bottom buttons */}
-            <div className="h-20" />
-          </form>
-        </div>
-
-        {/* Footer - Fixed at bottom */}
-        <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 sticky bottom-0 z-10">
-          <div className="flex gap-3 sm:container sm:mx-auto sm:max-w-sm">
-            <Button 
-              type="button"
-              onClick={clearFilters}
-              variant="outline"
-              className="flex-1"
-            >
-              مسح الفلاتر
-            </Button>
-            <Button 
-              type="submit"
-              onClick={applyFilters} 
-              className="flex-1"
-            >
-              تطبيق الفلاتر
-            </Button>
+              {/* Spacer for bottom buttons */}
+              <div className="h-20" />
+            </form>
           </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+
+          {/* Footer - Fixed at bottom */}
+          <div className="flex-none border-t bg-background/80 backdrop-blur-sm p-4 sticky bottom-0 z-10">
+            <div className="flex gap-3 sm:container sm:mx-auto sm:max-w-sm">
+              <Button 
+                type="button"
+                onClick={clearFilters}
+                variant="outline"
+                className="flex-1"
+              >
+                مسح الفلاتر
+              </Button>
+              <Button 
+                type="submit"
+                onClick={applyFilters} 
+                className="flex-1"
+              >
+                تطبيق الفلاتر
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

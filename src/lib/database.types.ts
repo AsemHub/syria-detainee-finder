@@ -10,7 +10,7 @@ export type DetaineeStatus = 'معتقل' | 'مفقود' | 'مطلق سراح' |
 export type DetaineeGender = 'ذكر' | 'أنثى' | 'غير معروف';
 export type DocumentCategory = 'identification' | 'detention_record' | 'witness_statement' | 'medical_record' | 'legal_document' | 'photo' | 'correspondence' | 'other';
 export type DocumentType = 'csv_upload' | 'supporting_document' | 'media';
-export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type UploadStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'requires_review';
 export type AccessLevel = 'public' | 'restricted' | 'confidential' | 'private';
 export type RelationType = 'supersedes' | 'supplements' | 'contradicts' | 'confirms' | 'related_to' | 'CSV_UPLOAD';
@@ -150,5 +150,27 @@ export interface Database {
   };
 }
 
+export type ErrorType = 'duplicate' | 'invalid_date' | 'missing_required' | 'invalid_age' | 'invalid_gender' | 'invalid_status' | 'invalid_data' | 'error';
+
+export interface ValidationError {
+  type: ErrorType;
+  message: string;
+}
+
+export interface UploadError {
+  record?: string;
+  errors: ValidationError[];
+}
+
+export interface UploadStats {
+  total: number;
+  valid: number;
+  invalid: number;
+  duplicates: number;
+}
+
 export type CsvUploadSession = Database['public']['Tables']['upload_sessions']['Row'];
 export type CsvUploadRecord = Database['public']['Tables']['csv_upload_records']['Row'];
+export type Detainee = Database['public']['Tables']['detainees']['Row'];
+export type DetaineeInsert = Database['public']['Tables']['detainees']['Insert'];
+export type DetaineeUpdate = Database['public']['Tables']['detainees']['Update'];

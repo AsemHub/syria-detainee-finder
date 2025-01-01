@@ -3,7 +3,7 @@
 import { Progress } from "../ui/progress"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
-import { UploadStatus, UploadStats } from "@/types/upload"
+import { UploadStatus, UploadStats } from '@/lib/database.types'
 
 interface UploadProgressProps {
   status: UploadStatus;
@@ -56,3 +56,4 @@ export function UploadProgress({ status, progress, stats, currentRecord }: Uploa
     </div>
   )
 }
+

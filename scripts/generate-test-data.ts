@@ -1,4 +1,4 @@
-import { DetaineeGender, DetaineeStatus } from '../src/types';
+import { DetaineeGender, DetaineeStatus } from '@/lib/database.types';
 
 interface TestDetainee {
   full_name: string;
@@ -106,8 +106,8 @@ function generateTestDetainee(): TestDetainee {
     detention_facility: getRandomElement(detentionFacilities),
     physical_description: getRandomElement(physicalDescriptions),
     age_at_detention: Math.random() > 0.1 ? Math.floor(Math.random() * 50) + 15 : null, // Ages 15-65
-    gender: getRandomElement(['male', 'female', 'other', 'unknown'] as DetaineeGender[]),
-    status: getRandomElement(['detained', 'released', 'deceased', 'unknown'] as DetaineeStatus[]),
+    gender: getRandomElement(['ذكر', 'أنثى' , 'غير معروف'] as DetaineeGender[]),
+    status: getRandomElement(['معتقل', 'مفقود', 'مطلق سراح', 'متوفى', 'غير معروف'] as DetaineeStatus[]),
     additional_info: getRandomElement(additionalInfos)
   };
 }

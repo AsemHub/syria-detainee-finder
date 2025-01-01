@@ -69,148 +69,113 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: Request) {
+  let supabase: SupabaseClient<Database>;
+  let sessionId: string;
+
   try {
-    Logger.info('Starting file upload process');
-    Logger.debug('Upload request received', {
-      method: request.method,
-      contentType: request.headers.get('content-type'),
-      url: request.url
-    });
-
-    // Parse form data
+    Logger.info(`Starting upload request processing`);
+    
     const formData = await request.formData();
-    Logger.info('Form data received');
-
-    // Extract file and organization from form data
-    const file = formData.get('file') as File;
+    const fileData = formData.get('file') as File;
     const organization = formData.get('organization') as string;
-    const sessionId = formData.get('sessionId') as string;
+    sessionId = formData.get('sessionId') as string;
 
-    Logger.debug('FormData contents', {
-      formData: {
-        organization,
-        sessionId,
-        file: file ? {
-          type: file.type,
-          size: file.size,
-          name: file.name
-        } : null
+    if (!fileData || !organization || !sessionId) {
+      Logger.error(`Missing required fields`, { 
+        hasFile: !!fileData, 
+        hasOrg: !!organization, 
+        hasSession: !!sessionId 
+      });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    Logger.info(`Processing upload request`, { 
+      fileSize: fileData.size,
+      fileType: fileData.type,
+      organization,
+      sessionId 
+    });
+
+    // Initialize Supabase client
+    supabase = createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
       }
-    });
-
-    // Validate file entry
-    if (!file || !organization || !sessionId) {
-      Logger.error('Missing required fields', { file: !!file, organization: !!organization, sessionId: !!sessionId });
-      return createResponse(
-        { error: 'Missing required fields' },
-        400
-      );
-    }
-
-    Logger.debug('File upload details', {
-      fileEntryType: typeof file,
-      hasRequiredProps: 'size' in file && 'name' in file,
-      fileValue: {
-        type: file.type,
-        size: file.size,
-        name: file.name
-      },
-      sessionId,
-      organization
-    });
-
-    Logger.info('File and organization data extracted', {
-      fileName: file.name,
-      fileSize: file.size,
-      organization
-    });
-
-    // Upload file to storage
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${uuidv4()}_${file.name}`;
-    
-    // Convert file to buffer and force text/csv content type
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const { data: fileData, error: uploadError } = await supabase.storage
-      .from('csv-uploads')
-      .upload(fileName, fileBuffer, {
-        contentType: 'text/csv',
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) {
-      Logger.error('Failed to upload file', { uploadError });
-      return createResponse(
-        { error: 'Failed to upload file', details: uploadError.message },
-        500
-      );
-    }
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('csv-uploads')
-      .getPublicUrl(fileName);
-
-    // Update session with file URL
-    const { error: updateError } = await supabase
-      .from('upload_sessions')
-      .update({ file_url: publicUrl })
-      .eq('id', sessionId);
-
-    if (updateError) {
-      Logger.error('Failed to update session', { updateError });
-      return createResponse(
-        { error: 'Failed to update session', details: updateError.message },
-        500
-      );
-    }
-
-    Logger.debug('Session updated', {
-      sessionId,
-      updates: { file_url: publicUrl },
-    });
-
-    Logger.debug('File uploaded to storage', {
-      fileName,
-      publicUrl,
-      sessionId
-    });
-
-    // Read file content as text
-    const fileContent = await file.text();
-    
-    Logger.debug('File content received', { 
-      contentLength: fileContent.length,
-      sessionId
-    });
-
-    // Parse CSV content
-    const csvResult = Papa.parse(fileContent, {
-      header: true,
-      transformHeader: (header) => getStandardizedHeader(header),
-      transform: (value) => cleanCsvValue(value),
-      skipEmptyLines: true,
-    }) as { data: Record<string, string>[]; meta: Papa.ParseMeta };
-
-    Logger.debug('CSV parsing complete', {
-      rowCount: csvResult.data.length,
-      fields: csvResult.meta.fields,
-      firstRow: csvResult.data[0],
-      sessionId
-    });
-
-    // Process records asynchronously
-    processRecords(csvResult.data, organization, sessionId, supabaseAdmin)
-      .catch(error => {
-        Logger.error('Failed to process records', { error, sessionId });
-      });
-
-    return createResponse(
-      { message: 'Upload started', sessionId },
-      202
     );
 
+    // Update session to processing state
+    await updateSession(supabase, sessionId, {
+      status: 'processing',
+      mime_type: fileData.type,
+      organization: organization,
+      current_record: 'Starting file processing...',
+      updated_at: new Date().toISOString()
+    });
+
+    try {
+      const fileContent = await fileData.text();
+      Logger.debug(`File content read`, { contentLength: fileContent.length });
+
+      // Type the parse result properly
+      interface CsvRow {
+        full_name: string;
+        date_of_detention?: string;
+        last_seen_location?: string;
+        detention_facility?: string;
+        physical_description?: string;
+        age_at_detention?: string;
+        gender?: DetaineeGender;
+        status?: DetaineeStatus;
+        contact_info?: string;
+        additional_notes?: string;
+        [key: string]: string | undefined;
+      }
+
+      const parseResult = Papa.parse<CsvRow>(fileContent, { 
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => getStandardizedHeader(header)
+      });
+      
+      Logger.debug(`CSV parsing complete`, { 
+        rowCount: parseResult.data.length,
+        errorCount: parseResult.errors?.length || 0,
+        fields: parseResult.meta.fields
+      });
+
+      if (parseResult.errors.length > 0) {
+        Logger.error(`CSV parsing errors`, { errors: parseResult.errors });
+        throw new Error(`Error parsing CSV file: ${parseResult.errors[0].message}`);
+      }
+
+      // Process records asynchronously with proper typing
+      processRecords(parseResult.data as Record<string, string>[], organization, sessionId, supabaseAdmin)
+        .catch(error => {
+          Logger.error('Failed to process records', { error, sessionId });
+        });
+
+      return createResponse(
+        { message: 'Upload started', sessionId },
+        202
+      );
+
+    } catch (error) {
+      Logger.error('Error in upload process', { 
+        error,
+        stack: error instanceof Error ? error.stack : undefined,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+
+      return createResponse(
+        { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+        500
+      );
+    }
   } catch (error) {
     Logger.error('Error in upload process', { 
       error,
@@ -317,7 +282,6 @@ async function processRecords(
           .insert({
             full_name: mappedRecord.full_name,
             original_name: mappedRecord.full_name,
-            normalized_name: normalizedName,
             date_of_detention: parseDate(mappedRecord.date_of_detention),
             last_seen_location: mappedRecord.last_seen_location || '',
             detention_facility: mappedRecord.detention_facility || null,

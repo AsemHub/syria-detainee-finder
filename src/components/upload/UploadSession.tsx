@@ -1,9 +1,15 @@
 "use client"
 
+import { Database } from '@/lib/database.types'
 import { supabaseClient } from '@/lib/supabase.client'
 import Logger from '@/lib/logger'
-import { UploadStatus, UploadSession } from '@/types/upload'
 import { RealtimeChannel } from '@supabase/supabase-js'
+
+// Define the UploadStatus type
+export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+// Use the CsvUploadSession type from database
+type UploadSession = Database['public']['Tables']['upload_sessions']['Row'];
 
 export class UploadSessionManager {
   private supabase = supabaseClient;
@@ -100,6 +106,35 @@ export class UploadSessionManager {
         stack: error instanceof Error ? error.stack : undefined,
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+      throw error;
+    }
+  }
+
+  async startUpload(file: File, organization: string, sessionId: string): Promise<void> {
+    try {
+      Logger.info(`Starting file upload: ${file.name}`);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('organization', organization);
+      formData.append('sessionId', sessionId);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        Logger.error(`Upload failed: ${response.status}`, { error: errorData });
+        throw new Error(`Upload failed: ${errorData.error || response.statusText}`);
+      }
+
+      const data = await response.json();
+      Logger.info(`Upload completed successfully`, { data });
+
+    } catch (error) {
+      Logger.error(`Upload error occurred`, { error });
       throw error;
     }
   }
@@ -201,18 +236,23 @@ export class UploadSessionManager {
   private handleSessionUpdate(data: UploadSession, callbacks: any) {
     try {
       // Update progress
-      if (callbacks.onProgress && data.total_records > 0) {
-        const progress = Math.round((data.processed_records / data.total_records) * 100);
-        callbacks.onProgress(Math.min(progress, 100));
+      if (callbacks.onProgress) {
+        const totalRecords = data.total_records ?? 0;
+        const processedRecords = data.processed_records ?? 0;
+        
+        if (totalRecords > 0) {
+          const progress = Math.round((processedRecords / totalRecords) * 100);
+          callbacks.onProgress(Math.min(progress, 100));
+        }
       }
 
       // Update stats
       if (callbacks.onStatsUpdate) {
         callbacks.onStatsUpdate({
-          total: data.total_records || 0,
-          valid: data.valid_records || 0,
-          invalid: data.invalid_records || 0,
-          duplicates: data.duplicate_records || 0
+          total: data.total_records ?? 0,
+          valid: data.valid_records ?? 0,
+          invalid: data.invalid_records ?? 0,
+          duplicates: data.duplicate_records ?? 0
         });
       }
 
@@ -249,10 +289,10 @@ export class UploadSessionManager {
               sessionId: data.id,
               status,
               stats: {
-                total: data.total_records,
-                valid: data.valid_records,
-                invalid: data.invalid_records,
-                duplicates: data.duplicate_records
+                total: data.total_records ?? 0,
+                valid: data.valid_records ?? 0,
+                invalid: data.invalid_records ?? 0,
+                duplicates: data.duplicate_records ?? 0
               }
             });
             this.cleanup();

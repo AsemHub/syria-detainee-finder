@@ -23,7 +23,8 @@ import { UploadErrors } from './UploadErrors'
 import { FileInput } from './FileInput'
 import { FormatGuide } from './FormatGuide'
 import { UploadLimits } from './UploadLimits'
-import { UploadStatus, UploadError } from '@/types/upload'
+import { UploadStatus, UploadError } from '@/lib/database.types'
+import { Database } from "@/lib/database.types"
 
 const formSchema = z.object({
   organization: z.string().min(1, {
