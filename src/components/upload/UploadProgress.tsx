@@ -25,7 +25,7 @@ export function UploadProgress({ status, progress, stats, currentRecord }: Uploa
               {status === 'processing' && <Loader2 className="h-4 w-4 animate-spin" />}
               {status === 'completed' && <CheckCircle2 className="h-4 w-4" />}
               {status === 'failed' && <AlertCircle className="h-4 w-4" />}
-　　 　 　 　
+
               <AlertTitle>
                 {status === 'pending' && 'جاري رفع الملف...'}
                 {status === 'processing' && 'جاري معالجة السجلات...'}
@@ -41,7 +41,7 @@ export function UploadProgress({ status, progress, stats, currentRecord }: Uploa
                   <p>السجلات الصالحة: {stats.valid}</p>
                   <p>السجلات غير الصالحة: {stats.invalid}</p>
                   <p>السجلات المكررة: {stats.duplicates}</p>
-                  {currentRecord && <p>جاري معالجة: {currentRecord}</p>}
+                  {currentRecord && <p className="mt-2 text-sm text-muted-foreground">{currentRecord}</p>}
                 </div>
               )}
               {status === 'failed' && (
@@ -56,4 +56,3 @@ export function UploadProgress({ status, progress, stats, currentRecord }: Uploa
     </div>
   )
 }
-
