@@ -73,12 +73,17 @@ export async function POST(request: Request) {
   let sessionId: string;
 
   try {
-    Logger.info(`Starting upload request processing`);
-    
+    Logger.info('Received upload request');
     const formData = await request.formData();
     const fileData = formData.get('file') as File;
     const organization = formData.get('organization') as string;
     sessionId = formData.get('sessionId') as string;
+
+    Logger.debug('File details', { 
+      name: fileData.name,
+      type: fileData.type,
+      size: fileData.size 
+    });
 
     if (!fileData || !organization || !sessionId) {
       Logger.error(`Missing required fields`, { 
@@ -118,9 +123,17 @@ export async function POST(request: Request) {
     });
 
     try {
-      const fileContent = await fileData.text();
-      Logger.debug(`File content read`, { contentLength: fileContent.length });
+      // Sanitize organization name for use in file path
+      const sanitizedOrgName = sanitizeFileName(organization);
+      
+      // Create file path for storage: organization/sessionId/filename.csv
+      const filePath = `${sanitizedOrgName}/${sessionId}/${sanitizeFileName(fileData.name)}`;
+      
+      Logger.debug('Uploading file', { filePath });
 
+      // Read the file content
+      const fileContent = await fileData.text();
+      
       // Type the parse result properly
       interface CsvRow {
         full_name: string;

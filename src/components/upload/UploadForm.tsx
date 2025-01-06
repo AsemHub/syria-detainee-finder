@@ -23,7 +23,7 @@ import { UploadErrors } from './UploadErrors'
 import { FileInput } from './FileInput'
 import { FormatGuide } from './FormatGuide'
 import { UploadLimits } from './UploadLimits'
-import { UploadStatus, UploadError } from '@/lib/database.types'
+import { UploadStatus, UploadError, ErrorType, ValidationError } from '@/lib/database.types'
 import { Database } from "@/lib/database.types"
 
 const formSchema = z.object({
@@ -51,8 +51,19 @@ export function UploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showFormatGuide, setShowFormatGuide] = useState(false);
 
-  // Create session manager instance
-  const sessionManager = useMemo(() => new UploadSessionManager(), []);
+  // Create session manager instance with callbacks
+  const sessionManager = useMemo(() => new UploadSessionManager({
+    onProgress: setProcessingProgress,
+    onStatusChange: (newStatus: UploadStatus) => {
+      setStatus(newStatus);
+      if (newStatus === 'completed' || newStatus === 'failed') {
+        setIsUploading(false);
+      }
+    },
+    onError: setErrors,
+    onStatsUpdate: setStats,
+    onCurrentRecord: setCurrentRecord
+  }), []);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -80,13 +91,14 @@ export function UploadForm() {
   };
 
   const onSubmit = async (data: FormData) => {
+    // Validate file selection
     if (!selectedFile) {
       setErrors([{
         record: '',
         errors: [{
-          message: 'الرجاء اختيار ملف CSV',
-          type: 'error'
-        }]
+          type: 'validation' as ErrorType,
+          message: 'الرجاء اختيار ملف CSV'
+        }] as ValidationError[]
       }]);
       return;
     }
@@ -105,34 +117,16 @@ export function UploadForm() {
     setCurrentRecord(null);
 
     try {
-      // Create session and upload file
-      const session = await sessionManager.createSession(selectedFile, data.organization);
-      setSessionId(session.id);
-
-      // Setup subscription with cleanup
-      const cleanup = sessionManager.subscribeToSession(session.id, {
-        onProgress: setProcessingProgress,
-        onStatusChange: (newStatus) => {
-          setStatus(newStatus);
-          if (newStatus === 'completed' || newStatus === 'failed') {
-            setIsUploading(false);
-            cleanup(); // Clean up subscription after completion
-          }
-        },
-        onError: setErrors,
-        onStatsUpdate: setStats,
-        onCurrentRecord: setCurrentRecord
-      });
-
+      // Start upload and processing
+      await sessionManager.startUpload(selectedFile, data.organization);
     } catch (error) {
-      Logger.error('Upload error:', error);
-      setStatus('failed');
+      Logger.error('Failed to upload file', error);
       setErrors([{
         record: '',
         errors: [{
-          message: error instanceof Error ? error.message : 'Upload failed',
-          type: 'error'
-        }]
+          type: 'invalid_data' as ErrorType,
+          message: error instanceof Error ? error.message : 'فشل رفع الملف'
+        }] as ValidationError[]
       }]);
       setIsUploading(false);
     }
@@ -140,11 +134,11 @@ export function UploadForm() {
 
   useEffect(() => {
     return () => {
-      if (sessionId && sessionManager) {
-        sessionManager.unsubscribeFromSession();
+      if (sessionManager) {
+        sessionManager.cleanup();
       }
     };
-  }, [sessionId, sessionManager]);
+  }, [sessionManager]);
 
   const downloadErrorsReport = () => {
     // Create CSV content with UTF-8 BOM and proper encoding
@@ -152,11 +146,15 @@ export function UploadForm() {
     const rows = [
       ['السجل', 'نوع الخطأ', 'تفاصيل الخطأ'],
       ...errors.map(error => 
-        error.errors.map(err => [
+        Array.isArray(error.errors) ? error.errors.map(err => [
           error.record || '',
           err.type || 'other',
           err.message
-        ])
+        ]) : [[
+          error.record || '',
+          'error',
+          error.errors
+        ]]
       ).flat()
     ];
 
@@ -218,6 +216,8 @@ export function UploadForm() {
             selectedFile={selectedFile}
             isUploading={isUploading}
             onFileSelect={setSelectedFile}
+            onError={setErrors}
+            onChange={setSelectedFile}
           />
 
           <Button type="submit" disabled={!selectedFile || isUploading}>

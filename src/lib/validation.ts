@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import { DetaineeGender, DetaineeStatus } from './database.types';
+import { normalizeArabicText } from './arabic-utils';
 
 // Add custom parse format plugin
 dayjs.extend(customParseFormat);
@@ -11,28 +12,9 @@ interface ValidationResult {
 }
 
 // Text normalization utilities
-export function normalizeArabicText(text: string): string {
-  if (!text) return '';
-  
-  const normalized = text.trim()
-    .normalize('NFKC') // Normalize to composed form
-    .replace(/[\u0623\u0625\u0622]/g, 'ا') // Normalize alef variations
-    .replace(/[\u0629]/g, 'ة') // Normalize taa marbouta
-    .replace(/[\u064A\u0649]/g, 'ي') // Normalize yaa
-    .replace(/\s+/g, ' ') // Normalize spaces
-    .trim();
-
-  return normalized;
-}
-
 export function normalizeNameForDb(name: string): string {
-  return normalizeArabicText(name)
-    .replace(/[\u064B-\u065F]/g, '')  // Remove Arabic diacritics
-    .replace(/[أإآ]/g, 'ا')  // Normalize alef variations
-    .replace(/[ىئ]/g, 'ي')  // Normalize yaa variations
-    .replace(/[ؤ]/g, 'و')   // Normalize waw variations
-    .replace(/[ة]/g, 'ه')   // Normalize taa marbouta
-    .toLowerCase(); // Make case-insensitive
+  // Use the comprehensive normalizeArabicText function
+  return normalizeArabicText(name).toLowerCase();
 }
 
 export function cleanupText(text: string): string {

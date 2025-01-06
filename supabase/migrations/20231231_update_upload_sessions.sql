@@ -73,7 +73,7 @@ CREATE TABLE upload_sessions (
     invalid_records INT CHECK (invalid_records >= 0),
     duplicate_records INT CHECK (duplicate_records >= 0),
     skipped_duplicates INT CHECK (skipped_duplicates >= 0),
-    status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    status TEXT NOT NULL CHECK (status IN ('uploading', 'pending', 'processing', 'completed', 'failed')),
     error_message TEXT,
     errors JSONB,
     processing_details JSONB,

@@ -3,8 +3,14 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "functions": {
-    "src/app/api/upload/route.ts": {
-      "maxDuration": 60
+    "src/app/api/upload-queue/route.ts": {
+      "maxDuration": 10,
+      "memory": 256
+    },
+    "src/app/api/process-csv/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024
     }
-  }
+  },
+  "regions": ["fra1"]
 }

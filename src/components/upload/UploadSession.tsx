@@ -1,12 +1,9 @@
 "use client"
 
-import { Database } from '@/lib/database.types'
+import { Database, UploadStatus } from '@/lib/database.types'
 import { supabaseClient } from '@/lib/supabase.client'
 import Logger from '@/lib/logger'
 import { RealtimeChannel } from '@supabase/supabase-js'
-
-// Define the UploadStatus type
-export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 // Use the CsvUploadSession type from database
 type UploadSession = Database['public']['Tables']['upload_sessions']['Row'];
@@ -20,310 +17,248 @@ export class UploadSessionManager {
   private retryTimeout: NodeJS.Timeout | null = null;
   private isCompleted = false;
   private currentStatus: UploadStatus | null = null;
+  private onProgress?: (progress: number) => void;
+  private onStatusChange?: (status: UploadStatus) => void;
+  private onError?: (errors: any[]) => void;
+  private onStatsUpdate?: (stats: { total: number; valid: number; invalid: number; duplicates: number }) => void;
+  private onCurrentRecord?: (record: string) => void;
 
-  async createSession(file: File, organization: string): Promise<UploadSession> {
-    try {
-      // Create the upload session
-      const { data: session, error } = await this.supabase
-        .from('upload_sessions')
-        .insert({
-          file_name: file.name,
-          file_size: file.size,
-          mime_type: file.type,
-          organization: organization,
-          uploaded_by: 'anonymous',
-          status: 'pending',
-          total_records: 0,
-          processed_records: 0,
-          valid_records: 0,
-          invalid_records: 0,
-          duplicate_records: 0
-        })
-        .select()
-        .single();
-
-      if (error) {
-        Logger.error('Failed to create session', { error });
-        throw error;
-      }
-
-      Logger.debug('Upload session created', { sessionId: session.id });
-
-      // Prepare form data for file upload
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('organization', organization);
-      formData.append('sessionId', session.id);
-
-      // Log form data for debugging
-      const formDataEntries: Record<string, any> = {};
-      formData.forEach((value, key) => {
-        formDataEntries[key] = value instanceof Blob ? {
-          type: value.type,
-          size: value.size,
-          name: value instanceof File ? value.name : 'blob'
-        } : value;
-      });
-      Logger.debug('FormData being sent', { formData: formDataEntries });
-
-      // Upload file using API route
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const responseData = await response.json();
-        Logger.error('Upload failed', { 
-          status: response.status,
-          statusText: response.statusText,
-          responseData
-        });
-        
-        // Update session status on error
-        await this.supabase
-          .from('upload_sessions')
-          .update({
-            status: 'failed',
-            errors: [{
-              record: '',
-              errors: [{ 
-                message: responseData.message || 'خطأ في رفع الملف',
-                type: 'error'
-              }]
-            }]
-          })
-          .eq('id', session.id);
-          
-        throw new Error(responseData.message || 'خطأ في رفع الملف');
-      }
-
-      return session;
-
-    } catch (error) {
-      Logger.error('Error in upload process', { 
-        error,
-        stack: error instanceof Error ? error.stack : undefined,
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
-    }
-  }
-
-  async startUpload(file: File, organization: string, sessionId: string): Promise<void> {
-    try {
-      Logger.info(`Starting file upload: ${file.name}`);
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('organization', organization);
-      formData.append('sessionId', sessionId);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        Logger.error(`Upload failed: ${response.status}`, { error: errorData });
-        throw new Error(`Upload failed: ${errorData.error || response.statusText}`);
-      }
-
-      const data = await response.json();
-      Logger.info(`Upload completed successfully`, { data });
-
-    } catch (error) {
-      Logger.error(`Upload error occurred`, { error });
-      throw error;
-    }
-  }
-
-  subscribeToSession(sessionId: string, callbacks: {
+  constructor(callbacks?: {
     onProgress?: (progress: number) => void;
     onStatusChange?: (status: UploadStatus) => void;
     onError?: (errors: any[]) => void;
     onStatsUpdate?: (stats: { total: number; valid: number; invalid: number; duplicates: number }) => void;
     onCurrentRecord?: (record: string) => void;
-  }): () => void {
-    Logger.debug('Setting up session subscription', { sessionId });
-
-    // Reset state
-    this.retryCount = 0;
-    this.isCompleted = false;
-    this.currentStatus = null;
-    
-    // Get initial session state
-    this.getInitialSession(sessionId).then(session => {
-      if (session) {
-        this.handleSessionUpdate(session, callbacks);
-      }
-    });
-
-    // Setup real-time channel
-    this.setupChannel(sessionId, callbacks);
-
-    // Return cleanup function
-    return () => this.cleanup();
+  }) {
+    if (callbacks) {
+      this.onProgress = callbacks.onProgress;
+      this.onStatusChange = callbacks.onStatusChange;
+      this.onError = callbacks.onError;
+      this.onStatsUpdate = callbacks.onStatsUpdate;
+      this.onCurrentRecord = callbacks.onCurrentRecord;
+    }
   }
 
-  private async getInitialSession(sessionId: string): Promise<UploadSession | null> {
+  private sanitizePathComponent(str: string): string {
+    return str
+      .replace(/[^a-zA-Z0-9-_]/g, '_') // Replace any non-alphanumeric chars with underscore
+      .replace(/_+/g, '_') // Replace multiple underscores with single
+      .toLowerCase();
+  }
+
+  public async startUpload(file: File, organization: string): Promise<void> {
+    Logger.info('Starting file upload', { fileName: file.name, organization });
+
     try {
-      const { data, error } = await this.supabase
+      // 1. Create upload session
+      const { data: session, error: sessionError } = await this.supabase
         .from('upload_sessions')
-        .select('*')
-        .eq('id', sessionId)
+        .insert({
+          organization,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type || 'text/csv',
+          status: 'uploading',
+          total_records: 0,
+          processed_records: 0,
+          valid_records: 0,
+          invalid_records: 0,
+          duplicate_records: 0,
+          processing_details: {
+            started_at: new Date().toISOString()
+          }
+        })
+        .select()
         .single();
 
-      if (error) {
-        Logger.error('Failed to get initial session state', { error, sessionId });
-        return null;
+      if (sessionError || !session) {
+        Logger.error('Failed to create session', { error: sessionError });
+        throw new Error(sessionError?.message || 'فشل إنشاء جلسة التحميل');
       }
 
-      return data;
-    } catch (error) {
-      Logger.error('Error getting initial session state', { error, sessionId });
-      return null;
-    }
-  }
+      const sessionId = session.id;
+      Logger.debug('Created upload session', { sessionId });
 
-  private setupChannel(sessionId: string, callbacks: any) {
-    if (this.channel) {
-      this.channel.unsubscribe();
-    }
+      // Set up realtime subscription before starting upload
+      this.setupChannel(sessionId);
 
-    Logger.debug('Creating channel', { sessionId, retryCount: this.retryCount });
+      // 2. Get signed URL for upload
+      const sanitizedOrg = this.sanitizePathComponent(organization);
+      const storagePath = `uploads/${sanitizedOrg}/${sessionId}/${this.sanitizePathComponent(file.name)}`;
+      Logger.debug('Getting signed URL', { sessionId, storagePath });
 
-    this.channel = this.supabase
-      .channel('public:upload_sessions')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'upload_sessions',
-          filter: `id=eq.${sessionId}`
-        },
-        (payload) => {
-          const data = payload.new as UploadSession;
-          Logger.debug('Realtime update received', { 
-            sessionId, 
-            status: data.status,
-            progress: data.processed_records,
-            total: data.total_records
-          });
+      const { data: signedData, error: signedUrlError } = await this.supabase
+        .storage
+        .from('csv-uploads')
+        .createSignedUploadUrl(storagePath);
 
-          this.handleSessionUpdate(data, callbacks);
-        }
-      )
-      .subscribe((status) => {
-        Logger.debug('Channel subscription status', { status, sessionId });
-        
-        if (status === 'SUBSCRIBED') {
-          Logger.info('Successfully subscribed to channel', { sessionId });
-          this.retryCount = 0;
-        } else if (!this.isCompleted && (status === 'CLOSED' || status === 'CHANNEL_ERROR')) {
-          // Only log error if we're not completed
-          Logger.error('Channel subscription failed', { status, sessionId });
-          this.handleReconnect(sessionId, callbacks);
-        } else if (this.isCompleted && (status === 'CLOSED' || status === 'CHANNEL_ERROR')) {
-          // Just debug log if we're completed - this is expected
-          Logger.debug('Channel closed after completion', { status, sessionId });
+      if (signedUrlError || !signedData?.signedUrl) {
+        Logger.error('Failed to get signed URL', { error: signedUrlError });
+        throw new Error(signedUrlError?.message || 'فشل الحصول على رابط التحميل');
+      }
+
+      // 3. Upload file
+      const uploadResponse = await fetch(signedData.signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': 'text/csv'
         }
       });
-  }
 
-  private handleSessionUpdate(data: UploadSession, callbacks: any) {
-    try {
-      // Update progress
-      if (callbacks.onProgress) {
-        const totalRecords = data.total_records ?? 0;
-        const processedRecords = data.processed_records ?? 0;
-        
-        if (totalRecords > 0) {
-          const progress = Math.round((processedRecords / totalRecords) * 100);
-          callbacks.onProgress(Math.min(progress, 100));
-        }
-      }
-
-      // Update stats
-      if (callbacks.onStatsUpdate) {
-        callbacks.onStatsUpdate({
-          total: data.total_records ?? 0,
-          valid: data.valid_records ?? 0,
-          invalid: data.invalid_records ?? 0,
-          duplicates: data.duplicate_records ?? 0
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        Logger.error('Failed to upload file', { 
+          status: uploadResponse.status,
+          statusText: uploadResponse.statusText,
+          error: errorText
         });
+        throw new Error('فشل تحميل الملف');
       }
 
-      // Update current record
-      if (callbacks.onCurrentRecord && data.current_record) {
-        callbacks.onCurrentRecord(data.current_record);
-      }
+      const publicUrl = this.supabase.storage
+        .from('csv-uploads')
+        .getPublicUrl(storagePath)
+        .data.publicUrl;
 
-      // Update errors
-      if (callbacks.onError && data.errors && Array.isArray(data.errors)) {
-        callbacks.onError(data.errors);
-      }
+      Logger.debug('File uploaded successfully', { publicUrl });
 
-      // Update status last
-      if (callbacks.onStatusChange && data.status) {
-        const status = data.status.toLowerCase() as UploadStatus;
-        if (['completed', 'failed', 'processing', 'pending'].includes(status)) {
-          // Update current status before callback
-          const oldStatus = this.currentStatus;
-          this.currentStatus = status;
-          
-          if (oldStatus !== status) {
-            Logger.debug('Status changed', { 
-              sessionId: data.id,
-              oldStatus,
-              newStatus: status
-            });
-            callbacks.onStatusChange(status);
+      // 4. Update session with file URL and mark as pending
+      const { error: updateError } = await this.supabase
+        .from('upload_sessions')
+        .update({ 
+          file_url: publicUrl,
+          status: 'pending',
+          processing_details: {
+            ...session.processing_details,
+            upload_completed: new Date().toISOString(),
+            storage_path: storagePath
           }
-          
-          if (status === 'completed' || status === 'failed') {
-            this.isCompleted = true;
-            Logger.debug('Session completed', { 
-              sessionId: data.id,
-              status,
-              stats: {
-                total: data.total_records ?? 0,
-                valid: data.valid_records ?? 0,
-                invalid: data.invalid_records ?? 0,
-                duplicates: data.duplicate_records ?? 0
-              }
-            });
-            this.cleanup();
-          }
-        }
+        })
+        .eq('id', sessionId);
+
+      if (updateError) {
+        Logger.error('Failed to update session', { error: updateError });
+        throw new Error('فشل تحديث حالة الجلسة');
       }
+
+      // 5. Start processing
+      const processResponse = await fetch('/api/process-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!processResponse.ok) {
+        const errorData = await processResponse.json();
+        Logger.error('Failed to start processing', errorData);
+        throw new Error(errorData.error || 'فشل بدء معالجة الملف');
+      }
+
+      Logger.debug('Processing started successfully');
 
     } catch (error) {
-      Logger.error('Error processing session update', { 
-        error,
-        sessionId: data.id,
-        data
-      });
+      Logger.error('Upload failed', { error });
+      throw error;
     }
   }
 
-  private handleReconnect(sessionId: string, callbacks: any) {
-    if (this.isCompleted) {
-      Logger.debug('Session already completed, skipping reconnection');
-      return;
+  private setupChannel(sessionId: string) {
+    try {
+      // Clean up any existing subscription
+      this.cleanup();
+
+      // Subscribe to session updates
+      this.channel = this.supabase
+        .channel(`upload_progress_${sessionId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'upload_sessions',
+            filter: `id=eq.${sessionId}`,
+          },
+          (payload) => {
+            Logger.debug('Received session update', payload);
+            this.handleSessionUpdate(payload.new as UploadSession);
+          }
+        )
+        .subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            Logger.debug('Successfully subscribed to updates');
+          } else {
+            Logger.error('Failed to subscribe to channel', { status, err });
+            this.retrySubscription(sessionId);
+          }
+        });
+
+    } catch (error) {
+      Logger.error('Error setting up channel', { error });
+      this.retrySubscription(sessionId);
+    }
+  }
+
+  private handleSessionUpdate(data: UploadSession) {
+    if (!data) return;
+
+    Logger.debug('Processing session update', { 
+      status: data.status,
+      processed: data.processed_records,
+      total: data.total_records 
+    });
+
+    // Update status
+    if (this.onStatusChange && data.status) {
+      this.currentStatus = data.status as UploadStatus;
+      this.onStatusChange(this.currentStatus);
     }
 
-    if (this.retryCount < this.maxRetries) {
-      this.retryCount++;
-      const delay = this.retryDelay * Math.pow(2, this.retryCount - 1);
-      
-      Logger.debug('Scheduling reconnection', { 
-        sessionId, 
-        retryCount: this.retryCount,
-        delay 
+    // Update progress
+    const totalRecords = data.total_records ?? 0;
+    const processedRecords = data.processed_records ?? 0;
+    
+    if (this.onProgress && totalRecords > 0) {
+      const progress = Math.round((processedRecords / totalRecords) * 100);
+      this.onProgress(Math.min(progress, 100));
+    }
+
+    // Update stats
+    if (this.onStatsUpdate) {
+      this.onStatsUpdate({
+        total: totalRecords,
+        valid: data.valid_records ?? 0,
+        invalid: data.invalid_records ?? 0,
+        duplicates: data.duplicate_records ?? 0
       });
+    }
+
+    // Update current record
+    if (this.onCurrentRecord && data.current_record) {
+      this.onCurrentRecord(data.current_record);
+    }
+
+    // Update errors
+    if (this.onError && data.errors) {
+      // Ensure errors is an array before passing to callback
+      const errorsArray = Array.isArray(data.errors) ? data.errors : [];
+      this.onError(errorsArray);
+    }
+
+    // Handle completion
+    if (data.status === 'completed' || data.status === 'failed') {
+      Logger.debug('Processing completed', { status: data.status });
+      this.isCompleted = true;
+      this.cleanup();
+    }
+  }
+
+  private retrySubscription(sessionId: string) {
+    if (this.retryCount < this.maxRetries && !this.isCompleted) {
+      this.retryCount++;
+      const delay = Math.min(this.retryDelay * Math.pow(2, this.retryCount - 1), 10000);
       
       if (this.retryTimeout) {
         clearTimeout(this.retryTimeout);
@@ -331,40 +266,21 @@ export class UploadSessionManager {
       
       this.retryTimeout = setTimeout(() => {
         if (!this.isCompleted) {
-          Logger.debug('Attempting reconnection', { sessionId, retryCount: this.retryCount });
-          this.setupChannel(sessionId, callbacks);
-        } else {
-          Logger.debug('Session completed during retry delay, skipping reconnection');
+          this.setupChannel(sessionId);
         }
       }, delay);
-    } else {
-      Logger.error('Max retries reached', { sessionId });
-      if (callbacks.onStatusChange) {
-        callbacks.onStatusChange('failed');
-      }
-      this.cleanup();
     }
   }
 
-  private cleanup() {
-    Logger.debug('Cleaning up session subscription', { 
-      isCompleted: this.isCompleted,
-      hasChannel: !!this.channel,
-      hasRetryTimeout: !!this.retryTimeout
-    });
-    
-    if (this.retryTimeout) {
-      clearTimeout(this.retryTimeout);
-      this.retryTimeout = null;
-    }
-    
+  cleanup() {
     if (this.channel) {
       this.channel.unsubscribe();
       this.channel = null;
     }
-
-    // Reset state
-    this.currentStatus = null;
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
     this.retryCount = 0;
   }
 

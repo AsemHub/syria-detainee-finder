@@ -68,7 +68,7 @@ const getErrorMessage = (error: { message: string; type: string }) => {
 };
 
 export function UploadErrors({ errors, onDownloadReport }: UploadErrorsProps) {
-  if (!errors.length) return null;
+  if (!errors || !errors.length) return null;
 
   return (
     <Card className="mt-4">
@@ -93,11 +93,15 @@ export function UploadErrors({ errors, onDownloadReport }: UploadErrorsProps) {
               {error.record ? `السجل: ${error.record}` : 'خطأ في الملف'}
             </h4>
             <ul className="list-disc list-inside space-y-1">
-              {error.errors.map((err: ValidationError, errIndex: number) => (
+              {Array.isArray(error.errors) ? error.errors.map((err: ValidationError, errIndex: number) => (
                 <li key={errIndex} className="text-sm text-destructive">
                   {getErrorMessage(err)}
                 </li>
-              ))}
+              )) : (
+                <li className="text-sm text-destructive">
+                  {getErrorMessage({ type: 'invalid_data', message: error.errors })}
+                </li>
+              )}
             </ul>
           </div>
         ))}

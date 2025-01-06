@@ -10,7 +10,7 @@ export type DetaineeStatus = 'معتقل' | 'مفقود' | 'مطلق سراح' |
 export type DetaineeGender = 'ذكر' | 'أنثى' | 'غير معروف';
 export type DocumentCategory = 'identification' | 'detention_record' | 'witness_statement' | 'medical_record' | 'legal_document' | 'photo' | 'correspondence' | 'other';
 export type DocumentType = 'csv_upload' | 'supporting_document' | 'media';
-export type UploadStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'idle';
 export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'requires_review';
 export type AccessLevel = 'public' | 'restricted' | 'confidential' | 'private';
 export type RelationType = 'supersedes' | 'supplements' | 'contradicts' | 'confirms' | 'related_to' | 'CSV_UPLOAD';
@@ -62,6 +62,53 @@ export interface SearchResponse {
 export interface Database {
   public: {
     Tables: {
+      processing_queue: {
+        Row: {
+          id: string;
+          session_id: string;
+          file_path: string;
+          status: UploadStatus;
+          priority: number;
+          attempts: number;
+          max_attempts: number;
+          error_message: string | null;
+          processing_details: Record<string, any> | null;
+          created_at: string;
+          started_at: string | null;
+          completed_at: string | null;
+          last_attempt_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          file_path: string;
+          status?: UploadStatus;
+          priority?: number;
+          attempts?: number;
+          max_attempts?: number;
+          error_message?: string | null;
+          processing_details?: Record<string, any> | null;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          last_attempt_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          file_path?: string;
+          status?: UploadStatus;
+          priority?: number;
+          attempts?: number;
+          max_attempts?: number;
+          error_message?: string | null;
+          processing_details?: Record<string, any> | null;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          last_attempt_at?: string | null;
+        };
+      };
       detainees: {
         Row: SearchResult;
         Insert: Omit<SearchResult, 'id' | 'created_at' | 'search_rank'>;
@@ -98,33 +145,77 @@ export interface Database {
           id: string;
           file_name: string;
           file_url: string | null;
-          file_size: number | null;
-          mime_type: string | null;
-          uploaded_by: string | null;
+          file_size: number;
+          mime_type: string;
+          uploaded_by: string;
           organization: string;
-          total_records: number | null;
-          processed_records: number | null;
-          valid_records: number | null;
-          invalid_records: number | null;
-          duplicate_records: number | null;
-          skipped_duplicates: number | null;
+          total_records: number;
+          processed_records: number;
+          valid_records: number;
+          invalid_records: number;
+          duplicate_records: number;
+          skipped_duplicates: number;
           status: UploadStatus;
           error_message: string | null;
-          errors: { record: string; errors: { message: string; type: string; }[]; }[] | null;
-          processing_details: {
-            current_index?: number;
-            current_name?: string;
-            total?: number;
-          } | null;
+          errors: Json | null;
+          processing_details: Json | null;
+          created_at: string;
+          updated_at: string;
+          last_update: string | null;
+          current_record: string | null;
+          failed_records: Json | null;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          file_name: string;
+          file_url?: string | null;
+          file_size: number;
+          mime_type: string;
+          uploaded_by: string;
+          organization: string;
+          total_records?: number;
+          processed_records?: number;
+          valid_records?: number;
+          invalid_records?: number;
+          duplicate_records?: number;
+          skipped_duplicates?: number;
+          status: UploadStatus;
+          error_message?: string | null;
+          errors?: Json | null;
+          processing_details?: Json | null;
           created_at?: string;
           updated_at?: string;
-          last_update?: string;
+          last_update?: string | null;
           current_record?: string | null;
-          failed_records?: any[] | null;
+          failed_records?: Json | null;
           completed_at?: string | null;
         };
-        Insert: Omit<Database['public']['Tables']['upload_sessions']['Row'], 'id' | 'created_at' | 'updated_at' | 'last_update'>;
-        Update: Partial<Database['public']['Tables']['upload_sessions']['Row']>;
+        Update: {
+          id?: string;
+          file_name?: string;
+          file_url?: string | null;
+          file_size?: number;
+          mime_type?: string;
+          uploaded_by?: string;
+          organization?: string;
+          total_records?: number;
+          processed_records?: number;
+          valid_records?: number;
+          invalid_records?: number;
+          duplicate_records?: number;
+          skipped_duplicates?: number;
+          status?: UploadStatus;
+          error_message?: string | null;
+          errors?: Json | null;
+          processing_details?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+          last_update?: string | null;
+          current_record?: string | null;
+          failed_records?: Json | null;
+          completed_at?: string | null;
+        };
       };
     };
     Functions: {
@@ -150,7 +241,16 @@ export interface Database {
   };
 }
 
-export type ErrorType = 'duplicate' | 'invalid_date' | 'missing_required' | 'invalid_age' | 'invalid_gender' | 'invalid_status' | 'invalid_data' | 'error';
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export type ErrorType = 
+  | 'validation' 
+  | 'missing_required' 
+  | 'invalid_age' 
+  | 'invalid_gender' 
+  | 'invalid_status' 
+  | 'duplicate' 
+  | 'invalid_data';
 
 export interface ValidationError {
   type: ErrorType;

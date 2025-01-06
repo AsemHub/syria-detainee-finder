@@ -15,14 +15,32 @@ interface FileInputProps {
   selectedFile: File | null;
   isUploading: boolean;
   onFileSelect: (file: File | null) => void;
+  onError: (errors: any) => void;
+  onChange: (file: File) => void;
 }
 
-export function FileInput({ selectedFile, isUploading, onFileSelect }: FileInputProps) {
+export function FileInput({ selectedFile, isUploading, onFileSelect, onError, onChange }: FileInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    onFileSelect(file);
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check if file extension is .csv
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      onError([{
+        record: '',
+        errors: [{
+          message: 'الرجاء اختيار ملف CSV فقط',
+          type: 'error'
+        }]
+      }]);
+      return;
+    }
+
+    // Create a new File object with explicit text/csv MIME type
+    const csvFile = new File([file], file.name, { type: 'text/csv' });
+    onChange(csvFile);
   };
 
   const handleClick = () => {
