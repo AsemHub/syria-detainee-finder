@@ -276,7 +276,6 @@ export async function POST(request: Request) {
           }
 
           // Map record to database schema
-          const now = new Date().toISOString();
           const detaineeRecord = {
             full_name: mappedRecord.full_name,
             original_name: mappedRecord.full_name, // Store original name
@@ -289,41 +288,9 @@ export async function POST(request: Request) {
             status: validateStatus(mappedRecord.status),
             contact_info: mappedRecord.contact_info,
             additional_notes: mappedRecord.additional_notes,
-            source_organization: mappedRecord.organization || session.organization || 'منظمه العداله',
-            created_at: now,
-            last_update_date: now
+            source_organization: mappedRecord.organization || session.organization,
+            last_update_date: new Date().toISOString()
           };
-
-          // Additional validation based on database constraints
-          if (!detaineeRecord.full_name || detaineeRecord.full_name.trim().length === 0) {
-            recordErrors.push({ type: 'invalid_name', message: 'Full name cannot be empty' });
-          }
-
-          if (!detaineeRecord.source_organization || detaineeRecord.source_organization.trim().length === 0) {
-            recordErrors.push({ type: 'invalid_organization', message: 'Source organization cannot be empty' });
-          }
-
-          const age = Number(detaineeRecord.age_at_detention);
-          if (isNaN(age) || age < 0 || age > 120) {
-            recordErrors.push({ type: 'invalid_age', message: 'Age must be between 0 and 120' });
-          }
-
-          if (detaineeRecord.date_of_detention) {
-            const detentionDate = new Date(detaineeRecord.date_of_detention);
-            const today = new Date();
-            if (detentionDate > today) {
-              recordErrors.push({ type: 'invalid_date', message: 'Detention date cannot be in the future' });
-            }
-          }
-
-          if (recordErrors.length > 0) {
-            invalidRecords++;
-            errors.push({
-              record: detaineeRecord.full_name || `Record ${recordIndex + 1}`,
-              errors: recordErrors
-            });
-            continue;
-          }
 
           // Insert valid record
           Logger.info('Attempting to insert record', { detaineeRecord });

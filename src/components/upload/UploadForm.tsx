@@ -25,6 +25,7 @@ import { FormatGuide } from './FormatGuide'
 import { UploadLimits } from './UploadLimits'
 import { UploadStatus, UploadError, ErrorType, ValidationError } from '@/lib/database.types'
 import { Database } from "@/lib/database.types"
+import { getErrorMessage } from '@/lib/error-messages';
 
 const formSchema = z.object({
   organization: z.string().min(1, {
@@ -149,11 +150,11 @@ export function UploadForm() {
         Array.isArray(error.errors) ? error.errors.map(err => [
           error.record || '',
           err.type || 'other',
-          err.message
+          getErrorMessage(err) // Use the existing Arabic error messages
         ]) : [[
           error.record || '',
           'error',
-          error.errors
+          getErrorMessage({ type: 'invalid_data', message: error.errors })
         ]]
       ).flat()
     ];
@@ -170,7 +171,7 @@ export function UploadForm() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `errors_report_${new Date().toISOString().slice(0, 19).replace(/:/g, '_')}.csv`);
+    link.setAttribute('download', `تقرير_الأخطاء_${new Date().toISOString().slice(0, 19).replace(/:/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
