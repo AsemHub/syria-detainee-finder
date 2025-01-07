@@ -46,56 +46,48 @@ interface SearchState {
 
 // Status mapping between Arabic and English
 const STATUS_MAP = {
-    // Arabic
-    'معتقل': 'in_custody',
-    'مفقود': 'missing',
-    'مطلق سراح': 'released',
-    'متوفى': 'deceased',
-    'غير معروف': 'unknown',
-    // English
-    'in_custody': 'in_custody',
-    'missing': 'missing',
-    'released': 'released',
-    'deceased': 'deceased',
-    'unknown': 'unknown'
+    'معتقل': 'معتقل',
+    'مفقود': 'مفقود',
+    'مطلق سراح': 'مطلق سراح',
+    'متوفى': 'متوفى',
+    'مغيب قسراً': 'مغيب قسراً',
+    'غير معروف': 'غير معروف',
 } as const;
 
 type DetaineeStatus = typeof STATUS_MAP[keyof typeof STATUS_MAP];
 
 function normalizeStatus(status: string | null): DetaineeStatus {
-    if (!status) return 'unknown';
-    return STATUS_MAP[status as keyof typeof STATUS_MAP] || 'unknown';
-}
-
-function getStatusVariant(status: string | null): "default" | "secondary" | "success" | "destructive" | "warning" | "deceased" {
-    switch (normalizeStatus(status)) {
-        case 'in_custody':
-            return 'warning';
-        case 'missing':
-            return 'destructive';
-        case 'released':
-            return 'success';
-        case 'deceased':
-            return 'deceased';
-        case 'unknown':
-        default:
-            return 'default';
+    if (!status) return 'غير معروف';
+    
+    // Handle interchangeable status usage
+    if (status === 'معتقل' || status === 'مغيب قسراً') {
+        // Return both statuses for search
+        return status;
     }
+    
+    return STATUS_MAP[status as keyof typeof STATUS_MAP] || 'غير معروف';
 }
 
 function getStatusDisplay(status: string | null): string {
-    switch (normalizeStatus(status)) {
-        case 'in_custody':
-            return 'معتقل';
-        case 'missing':
-            return 'مفقود';
-        case 'released':
-            return 'مطلق سراح';
-        case 'deceased':
-            return 'متوفى';
-        case 'unknown':
+    if (!status) return 'غير معروف';
+    return STATUS_MAP[status as keyof typeof STATUS_MAP] || status;
+}
+
+function getStatusVariant(status: string | null): "default" | "secondary" | "success" | "destructive" | "warning" | "deceased" {
+    if (!status) return 'default';
+    
+    switch (status) {
+        case 'معتقل':
+        case 'مغيب قسراً':
+            return 'warning'; // Use same variant for both
+        case 'مفقود':
+            return 'secondary';
+        case 'مطلق سراح':
+            return 'success';
+        case 'متوفى':
+            return 'deceased';
         default:
-            return 'غير معروف';
+            return 'default';
     }
 }
 

@@ -50,8 +50,9 @@ const formSchema = z.object({
     .max(50, { message: "الاسم طويل جداً" }),
   date_of_detention: z.date().nullable(),
   last_seen_location: z.string()
-    .min(2, "يجب أن يكون الموقع مكونًا من حرفين على الأقل")
-    .max(200, "يجب أن يكون الموقع أقل من 200 حرف"),
+    .max(200, "يجب أن يكون الموقع أقل من 200 حرف")
+    .optional()
+    .transform(val => val || ""),
   detention_facility: z.string()
     .max(200, "يجب أن يكون اسم المنشأة أقل من 200 حرف")
     .optional()
@@ -62,12 +63,18 @@ const formSchema = z.object({
     .transform(val => val || ""),
   age_at_detention: z.string()
     .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "العمر يجب أن يكون بين 0 و 120")
-    .optional(),
-  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "غير معروف"] as const),
-  gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const),
+    .optional()
+    .transform(val => val || ""),
+  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "مغيب قسراً", "غير معروف"] as const)
+    .optional()
+    .default("مفقود"),
+  gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const)
+    .optional()
+    .default("غير معروف"),
   contact_info: z.string()
-    .min(2, "معلومات الاتصال مطلوبة")
-    .max(200, "يجب أن تكون معلومات الاتصال أقل من 200 حرف"),
+    .min(2, "معلومات الاتصال مطلوبة ويجب أن تكون على الأقل حرفين")
+    .max(200, "يجب أن تكون معلومات الاتصال أقل من 200 حرف")
+    .refine(val => val.trim().length > 0, "معلومات الاتصال مطلوبة"),
   additional_notes: z.string()
     .max(1000, "يجب أن تكون الملاحظات الإضافية أقل من 1000 حرف")
     .optional()
@@ -104,7 +111,7 @@ export function SubmitForm() {
       physical_description: "",
       age_at_detention: "",
       status: "مفقود",
-      gender: "ذكر",
+      gender: "غير معروف",
       contact_info: "",
       additional_notes: "",
     },
@@ -120,7 +127,7 @@ export function SubmitForm() {
       physical_description: "",
       age_at_detention: "",
       status: "مفقود",
-      gender: "ذكر",
+      gender: "غير معروف",
       contact_info: "",
       additional_notes: "",
     })
@@ -273,7 +280,7 @@ export function SubmitForm() {
             تقديم معلومات عن شخص مفقود
           </h2>
           <p className="text-muted-foreground">
-            استخدم هذا النموذج لتقديم معلومات. يرجى تقديم أكبر قدر ممكن من التفاصيل لمساعدة الآخرين في العثور على أحبائهم.
+            استخدم هذا النموذج لتقديم معلومات. علامة النجمة (*) تشير إلى الاسم الكامل ومعلومات الاتصال وهي حقول مطلوبة. باقي المعلومات اختيارية ولكن تساعد في عملية البحث.
           </p>
         </div>
 
@@ -283,7 +290,10 @@ export function SubmitForm() {
             name="full_name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>الاسم الكامل*</FormLabel>
+                <FormLabel className="flex items-center">
+                  الاسم الكامل
+                  <span className="text-red-500 mr-1">*</span>
+                </FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="أدخل الاسم الكامل للشخص" 
@@ -336,7 +346,7 @@ export function SubmitForm() {
             name="last_seen_location"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>آخر موقع معروف*</FormLabel>
+                <FormLabel>آخر موقع معروف</FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="المدينة، المنطقة" 
@@ -374,7 +384,7 @@ export function SubmitForm() {
               name="status"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>الحالة*</FormLabel>
+                  <FormLabel>الحالة</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
@@ -386,9 +396,13 @@ export function SubmitForm() {
                       <SelectItem value="مفقود">مفقود</SelectItem>
                       <SelectItem value="مطلق سراح">مطلق سراح</SelectItem>
                       <SelectItem value="متوفى">متوفى</SelectItem>
+                      <SelectItem value="مغيب قسراً">مغيب قسراً</SelectItem>
                       <SelectItem value="غير معروف">غير معروف</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormDescription className="text-sm text-muted-foreground">
+                    نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما حسب ما تراه مناسباً.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -399,7 +413,7 @@ export function SubmitForm() {
               name="gender"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>الجنس*</FormLabel>
+                  <FormLabel>الجنس</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
@@ -442,7 +456,10 @@ export function SubmitForm() {
             name="contact_info"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>معلومات الاتصال*</FormLabel>
+                <FormLabel className="flex items-center">
+                  معلومات الاتصال
+                  <span className="text-red-500 mr-1">*</span>
+                </FormLabel>
                 <FormControl>
                   <Input 
                     placeholder="رقم هاتف أو بريد إلكتروني للتواصل" 
@@ -451,7 +468,7 @@ export function SubmitForm() {
                   />
                 </FormControl>
                 <FormDescription>
-                  معلومات الاتصال مطلوبة للتواصل في حالة وجود معلومات جديدة
+                  معلومات الاتصال ضرورية للتواصل في حالة وجود معلومات جديدة أو تحديثات هامة
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -494,7 +511,7 @@ export function SubmitForm() {
         </Button>
       </form>
 
-      <Dialog open={potentialMatches !== null} onOpenChange={(open) => {
+      <Dialog open={potentialMatches !== null && (potentialMatches.exactMatches.length > 0 || potentialMatches.fuzzyMatches.length > 0)} onOpenChange={(open) => {
         if (!open) {
           setPotentialMatches(null)
           setFormData(null)

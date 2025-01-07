@@ -52,7 +52,7 @@ const submitSchema = z.object({
   ])
     .nullable()
     .optional(),
-  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "غير معروف"] as const),
+  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "مغيب قسراً", "غير معروف"] as const),
   gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const),
   contact_info: z.string()
     .min(2, "Contact info must be at least 2 characters")
@@ -123,6 +123,13 @@ export async function POST(request: Request) {
           { error: "فشل في حفظ المعلومات" },
           { status: 500 }
         );
+      }
+
+      // Refresh materialized view to make the new record searchable
+      const { error: refreshError } = await supabaseServer.rpc('refresh_mv_detainees_search');
+      if (refreshError) {
+        Logger.error("Failed to refresh search view", { error: refreshError });
+        // Don't return error since the record was inserted successfully
       }
 
       // Record successful submission time for rate limiting

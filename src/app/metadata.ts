@@ -1,13 +1,17 @@
 import { Metadata } from "next"
 
 export const siteConfig = {
-  name: "Syria Detainee Finder",
-  description: "A humanitarian web application to help locate missing Syrian detainees and reunite families",
+  name: "الباحث عن المفقودين والمغيبين قسراً في سوريا",
+  description: "منصة إنسانية مخصصة للحصول على أو توفير معلومات عن المفقودين والمغيبين قسراً والمعتقلين في سوريا",
   keywords: [
     "Syria",
     "detainees",
     "humanitarian",
     "missing persons",
+    "forcibly disappeared",
+    "المغيبين قسراً",
+    "المفقودين",
+    "المعتقلين",
     "human rights",
     "families",
     "search",

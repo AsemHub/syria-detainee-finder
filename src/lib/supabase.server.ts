@@ -143,20 +143,19 @@ function maintainCache() {
 
 // Status mapping between Arabic and English
 const STATUS_MAP = {
-  // English to Arabic
-  'in_custody': 'معتقل',
-  'missing': 'مفقود',
-  'released': 'مطلق سراح',
-  'deceased': 'متوفى',
-  'unknown': 'غير معروف'
+  'معتقل': 'معتقل',
+  'مفقود': 'مفقود',
+  'مطلق سراح': 'مطلق سراح',
+  'متوفى': 'متوفى',
+  'مغيب قسراً': 'مغيب قسراً',
+  'غير معروف': 'غير معروف'
 } as const;
 
 // Gender mapping between English and Arabic
 const GENDER_MAP = {
-  // English to Arabic
-  'male': 'ذكر',
-  'female': 'أنثى',
-  'unknown': 'غير معروف'
+  'ذكر': 'ذكر',
+  'أنثى': 'أنثى',
+  'غير معروف': 'غير معروف'
 } as const;
 
 export async function performSearch({
@@ -174,20 +173,21 @@ export async function performSearch({
   dateTo
 }: SearchParams): Promise<SearchResponse> {
   try {
-    const normalizedSearchText = normalizeArabicText(query);
+    // Normalize the search text and handle spaces
+    const normalizedSearchText = normalizeArabicText(query)
+      .split(' ')  // Split by spaces
+      .filter(word => word.length > 0)  // Remove empty strings
+      .join(' | ');  // Join with OR operator for PostgreSQL full text search
     
-    // Map English status and gender to Arabic for database query
-    const mappedStatus = detentionStatus ? STATUS_MAP[detentionStatus as keyof typeof STATUS_MAP] : undefined;
-    const mappedGender = gender ? GENDER_MAP[gender as keyof typeof GENDER_MAP] : undefined;
-    
+    // Use the status and gender directly since we're now using Arabic values
     const { data, error } = await supabaseServer.rpc('search_detainees_enhanced', {
       search_params: {
         query: normalizedSearchText,
         pageSize: pageSize,
         pageNumber: pageNumber,
         estimateTotal: estimateTotal,
-        detentionStatus: mappedStatus,
-        gender: mappedGender,
+        detentionStatus: detentionStatus,
+        gender: gender,
         ageMin: ageMin,
         ageMax: ageMax,
         location: location,

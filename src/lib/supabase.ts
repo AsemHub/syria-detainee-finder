@@ -58,7 +58,7 @@ export type Document = {
     file_name: string;
 };
 
-export const buildSearchQuery = (supabase: any, params: SearchParams) => {
+export function buildSearchQuery(supabase: any, params: SearchParams) {
     // Normalize and validate parameters
     const normalizedParams = {
         query: params.query?.trim() || '',
@@ -72,14 +72,21 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
         dateTo: params.dateTo || null
     };
 
-    // Build the base query
     let query = supabase
         .from('detainees')
-        .select('*');
+        .select('*', { count: params.estimateTotal ? 'estimated' : 'exact' });
 
-    // Apply filters
+    if (normalizedParams.query) {
+        query = query.textSearch('full_name_search', normalizedParams.query);
+    }
+
+    // Handle interchangeable status usage
     if (normalizedParams.status) {
-        query = query.eq('status', normalizedParams.status);
+        if (normalizedParams.status === 'معتقل' || normalizedParams.status === 'مغيب قسراً') {
+            query = query.in('status', ['معتقل', 'مغيب قسراً']);
+        } else {
+            query = query.eq('status', normalizedParams.status);
+        }
     }
 
     if (normalizedParams.gender) {
@@ -100,14 +107,6 @@ export const buildSearchQuery = (supabase: any, params: SearchParams) => {
 
     if (normalizedParams.dateTo) {
         query = query.lte('date_of_detention', normalizedParams.dateTo);
-    }
-
-    // Add text search conditions
-    if (normalizedParams.query) {
-        query = query.textSearch('name_fts', normalizedParams.query, {
-            type: 'websearch',
-            config: 'arabic'
-        });
     }
 
     return query;

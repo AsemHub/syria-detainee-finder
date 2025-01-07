@@ -20,7 +20,7 @@ export function Navbar() {
             onClick={() => setMobileMenuOpen(false)}
             className="transition-all hover:text-primary text-foreground font-bold text-base whitespace-nowrap relative group"
           >
-            <span>الباحث عن المعتقلين</span>
+            <span>الباحث عن المفقودين والمغيبين قسراً</span>
             <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-primary transition-all group-hover:w-full"></span>
           </Link>
         </nav>

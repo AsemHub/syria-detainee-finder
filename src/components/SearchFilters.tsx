@@ -178,16 +178,18 @@ export function SearchFilters({ filters, onFiltersChangeAction }: SearchFiltersP
   };
 
   const statusOptions = [
-    { value: 'in_custody', label: 'قيد الاعتقال' },
-    { value: 'missing', label: 'مفقود' },
-    { value: 'released', label: 'محرر' },
-    { value: 'deceased', label: 'متوفى' },
-    { value: 'unknown', label: 'غير معروف' }
+    { value: 'معتقل', label: 'معتقل' },
+    { value: 'مفقود', label: 'مفقود' },
+    { value: 'مطلق سراح', label: 'مطلق سراح' },
+    { value: 'متوفى', label: 'متوفى' },
+    { value: 'مغيب قسراً', label: 'مغيب قسراً' },
+    { value: 'غير معروف', label: 'غير معروف' }
   ]
 
   const genderOptions = [
-    { value: 'male', label: 'ذكر' },
-    { value: 'female', label: 'أنثى' }
+    { value: 'ذكر', label: 'ذكر' },
+    { value: 'أنثى', label: 'أنثى' },
+    { value: 'غير معروف', label: 'غير معروف' }
   ]
 
   const getActiveFiltersCount = () => {
@@ -258,14 +260,19 @@ export function SearchFilters({ filters, onFiltersChangeAction }: SearchFiltersP
               e.preventDefault();
               applyFilters();
             }} className="space-y-4 p-4">
-              <div className="space-y-2">
-                <Label>الحالة</Label>
-                <SimpleSelect
-                  value={localFilters.status}
-                  onChange={(value) => handleFilterChange('status', value)}
-                  placeholder="اختر الحالة"
-                  options={statusOptions}
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>الحالة</Label>
+                  <SimpleSelect
+                    value={localFilters.status}
+                    onChange={(value) => handleFilterChange('status', value)}
+                    placeholder="اختر الحالة"
+                    options={statusOptions}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما في البحث وسنقوم بعرض النتائج المتعلقة بكليهما.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
