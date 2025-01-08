@@ -6,7 +6,6 @@ import { Menu, X } from "./icons";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
 import { MoonIcon, SunIcon } from "lucide-react";
-import { TranslationToggle } from "./TranslationToggle";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -62,9 +61,8 @@ export function Navbar() {
             </Link>
           </nav>
 
-          {/* Right Section - Theme and Translation Controls */}
-          <div className="flex items-center -mr-2 gap-0.5">
-            <TranslationToggle />
+          {/* Right Section - Theme Control */}
+          <div className="flex items-center -mr-2">
             <Button
               variant="ghost"
               size="icon"

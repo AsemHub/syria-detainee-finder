@@ -43,7 +43,6 @@
     "cross-fetch": "^4.0.0",
     "date-fns": "^2.30.0",
     "dayjs": "^1.11.13",
-    "deepl-node": "^1.11.0",
     "lodash-es": "^4.17.21",
     "lru-cache": "^10.4.3",
     "lucide-react": "^0.468.0",

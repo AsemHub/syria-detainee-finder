@@ -3,7 +3,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { arabic } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/Navbar";
-import { TranslationBanner } from "@/components/TranslationBanner";
 import { Metadata } from "next"
 import { IBM_Plex_Sans_Arabic } from "next/font/google"
 
@@ -38,7 +37,6 @@ export default function RootLayout({
             <Navbar />
             <div className="flex-1">{children}</div>
             <Toaster />
-            <TranslationBanner />
           </div>
         </NextThemeProvider>
       </body>

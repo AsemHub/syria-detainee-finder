@@ -6,12 +6,16 @@ export default function AboutPage() {
     <div className="container mx-auto py-12 px-4" dir="rtl">
       <div className="max-w-3xl mx-auto space-y-12">
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-8">باحث عن المعتقلين السوريين</h1>
+          <h1 className="text-4xl font-bold mb-8">باحث عن المعتقلين والمغيبين قسراً في سوريا</h1>
           
           <p className="text-lg text-muted-foreground leading-relaxed">
-            باحث عن المعتقلين السوريين هو منصة إنسانية مكرسة لمساعدة العائلات في العثور على
-            أحبائهم الذين تم اعتقالهم في سوريا. مهمتنا هي توفير قاعدة بيانات مركزية وسهلة الوصول
-            تساعد في البحث وتوثيق المعتقلين.
+            منصة إنسانية مكرسة لمساعدة العائلات في العثور على
+            أحبائهم المعتقلين والمغيبين قسراً في سوريا. مهمتنا هي توفير قاعدة بيانات مركزية وسهلة الوصول
+            تساعد في البحث والتوثيق.
+          </p>
+
+          <p className="text-md text-muted-foreground/80 leading-relaxed">
+            نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما حسب ما تراه مناسباً.
           </p>
         </div>
 
@@ -22,7 +26,7 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                تسهيل عملية تحديد وإيجاد المعتقلين في سوريا، وتوفير الأمل والدعم للعائلات
+                تسهيل عملية تحديد وإيجاد المعتقلين والمغيبين قسراً في سوريا، وتوفير الأمل والدعم للعائلات
                 الباحثة عن أحبائهم.
               </p>
             </CardContent>
@@ -42,11 +46,11 @@ export default function AboutPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-accent">•</span>
-                  تقديم معلومات جديدة عن المعتقلين
+                  تقديم معلومات جديدة عن المعتقلين والمغيبين قسراً
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-accent">•</span>
-                  يمكن للمنظمات تحميل سجلات معتقلين موثقة بشكل جماعي
+                  يمكن للمنظمات تحميل سجلات معتقلين ومغيبين قسراً موثقة بشكل جماعي
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-accent">•</span>
@@ -127,7 +131,7 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-muted-foreground">
-                هذه المنصة هي أداة للتواصل بين من لديهم معلومات ومن يبحثون عنها. وهي مجرد نقطة بداية محتملة في رحلة البحث عن المفقودين.
+                هذه المنصة هي أداة للتواصل بين من لديهم معلومات ومن يبحثون عنها. وهي مجرد نقطة بداية محتملة في رحلة البحث عن المعتقلين والمغيبين قسراً.
               </p>
               <div className="space-y-2">
                 <p className="text-muted-foreground">
