@@ -32,13 +32,21 @@ export function DatePickerInput({ value, onChange }: DatePickerInputProps) {
             fullWidth: true,
             placeholder: "اختر التاريخ",
             sx: {
+              width: '100%',
               '& .MuiInputBase-root': {
                 color: 'inherit',
                 backgroundColor: 'transparent',
+                width: '100%',
+                '@media (max-width: 640px)': {
+                  fontSize: '14px',
+                  padding: '0.375rem',
+                },
                 '& .MuiOutlinedInput-notchedOutline': {
                   border: 'none'
                 },
                 '& .MuiInputBase-input': {
+                  minHeight: '1.5rem',
+                  lineHeight: '1.5rem',
                   color: 'inherit !important',
                   fontSize: 'inherit',
                   fontFamily: 'inherit',
@@ -49,10 +57,38 @@ export function DatePickerInput({ value, onChange }: DatePickerInputProps) {
                     color: 'inherit',
                     opacity: 0.5
                   }
-                },
-                '& .MuiIconButton-root': {
-                  color: 'inherit'
                 }
+              },
+              '& .MuiPopover-root': {
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                '@media (max-width: 640px)': {
+                  width: '90vw',
+                  maxWidth: '400px'
+                }
+              },
+              // Prevent calendar from causing layout shifts
+              '& .MuiPickersPopper-root': {
+                position: 'fixed !important',
+                top: '50% !important',
+                left: '50% !important',
+                transform: 'translate(-50%, -50%) !important',
+                '@media (max-width: 640px)': {
+                  width: '90vw !important',
+                  maxWidth: '400px !important'
+                }
+              }
+            }
+          },
+          // Add mobile-optimized calendar styling
+          desktopPaper: {
+            sx: {
+              '@media (max-width: 640px)': {
+                margin: '0 !important',
+                maxHeight: '80vh !important',
+                borderRadius: '8px !important'
               }
             }
           },

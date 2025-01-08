@@ -43,6 +43,7 @@ import { DatePickerInput } from "@/components/ui/date-picker";
 import dayjs from "dayjs";
 import 'dayjs/locale/ar';
 import { DetaineeGender, DetaineeStatus } from "@/lib/database.types"
+import { WarningBanner } from "./WarningBanner"
 
 const formSchema = z.object({
   full_name: z.string()
@@ -273,135 +274,204 @@ export function SubmitForm() {
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 bg-gradient-to-b from-[#f0f8f0] to-[#e6f3e6] dark:from-[#1a2e1a] dark:to-[#0f1f0f] p-6 rounded-lg border border-[#4CAF50]/10">
-        <div className="space-y-2 text-center">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] bg-clip-text text-transparent">
-            تقديم معلومات عن شخص مفقود
-          </h2>
-          <p className="text-muted-foreground">
-            استخدم هذا النموذج لتقديم معلومات. علامة النجمة (*) تشير إلى الاسم الكامل ومعلومات الاتصال وهي حقول مطلوبة. باقي المعلومات اختيارية ولكن تساعد في عملية البحث.
-          </p>
-        </div>
+    <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-6">
+      <WarningBanner />
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 bg-gradient-to-b from-[#f0f8f0] to-[#e6f3e6] dark:from-[#1a2e1a] dark:to-[#0f1f0f] p-6 rounded-lg border border-[#4CAF50]/10">
+          <div className="space-y-2 text-center">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] bg-clip-text text-transparent">
+              تقديم معلومات عن شخص مفقود
+            </h2>
+            <p className="text-muted-foreground">
+              استخدم هذا النموذج لتقديم معلومات. علامة النجمة (*) تشير إلى الاسم الكامل ومعلومات الاتصال وهي حقول مطلوبة. باقي المعلومات اختيارية ولكن تساعد في عملية البحث.
+            </p>
+          </div>
 
-        <div className="space-y-6">
-          <FormField
-            control={form.control}
-            name="full_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="flex items-center">
-                  الاسم الكامل
-                  <span className="text-red-500 mr-1">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input 
-                    placeholder="أدخل الاسم الكامل للشخص" 
-                    {...field} 
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="date_of_detention"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>تاريخ الاعتقال</FormLabel>
-                <FormControl>
-                  <div className="bg-white dark:bg-[#1a2e1a] rounded-md border border-[#4CAF50]/20 focus-within:border-[#4CAF50]/50 focus-within:ring-2 focus-within:ring-[#4CAF50]/30">
-                    <DatePickerInput value={field.value} onChange={field.onChange} />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="age_at_detention"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>العمر عند الاعتقال</FormLabel>
-                <FormControl>
-                  <Input 
-                    type="number" 
-                    placeholder="العمر" 
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
-                    {...field} 
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="last_seen_location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>آخر موقع معروف</FormLabel>
-                <FormControl>
-                  <Input 
-                    placeholder="المدينة، المنطقة" 
-                    {...field} 
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="detention_facility"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>مكان الاحتجاز</FormLabel>
-                <FormControl>
-                  <Input 
-                    placeholder="أدخل مكان الاحتجاز" 
-                    {...field} 
-                    value={field.value || ""}
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-6">
             <FormField
               control={form.control}
-              name="status"
+              name="full_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>الحالة</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
-                        <SelectValue placeholder="اختر الحالة" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="معتقل">معتقل</SelectItem>
-                      <SelectItem value="مفقود">مفقود</SelectItem>
-                      <SelectItem value="مطلق سراح">مطلق سراح</SelectItem>
-                      <SelectItem value="متوفى">متوفى</SelectItem>
-                      <SelectItem value="مغيب قسراً">مغيب قسراً</SelectItem>
-                      <SelectItem value="غير معروف">غير معروف</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription className="text-sm text-muted-foreground">
-                    نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما حسب ما تراه مناسباً.
+                  <FormLabel className="flex items-center">
+                    الاسم الكامل
+                    <span className="text-red-500 mr-1">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="أدخل الاسم الكامل للشخص" 
+                      {...field} 
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="date_of_detention"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>تاريخ الاعتقال</FormLabel>
+                  <FormControl>
+                    <div className="bg-white dark:bg-[#1a2e1a] rounded-md border border-[#4CAF50]/20 focus-within:border-[#4CAF50]/50 focus-within:ring-2 focus-within:ring-[#4CAF50]/30">
+                      <DatePickerInput value={field.value} onChange={field.onChange} />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="age_at_detention"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>العمر عند الاعتقال</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="number" 
+                      placeholder="العمر" 
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="last_seen_location"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>آخر موقع معروف</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="المدينة، المنطقة" 
+                      {...field} 
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="detention_facility"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>مكان الاحتجاز</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="أدخل مكان الاحتجاز" 
+                      {...field} 
+                      value={field.value || ""}
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>الحالة</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
+                          <SelectValue placeholder="اختر الحالة" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="معتقل">معتقل</SelectItem>
+                        <SelectItem value="مفقود">مفقود</SelectItem>
+                        <SelectItem value="مطلق سراح">مطلق سراح</SelectItem>
+                        <SelectItem value="متوفى">متوفى</SelectItem>
+                        <SelectItem value="مغيب قسراً">مغيب قسراً</SelectItem>
+                        <SelectItem value="غير معروف">غير معروف</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-sm text-muted-foreground">
+                      نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما حسب ما تراه مناسباً.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="gender"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>الجنس</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
+                          <SelectValue placeholder="اختر الجنس" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="ذكر">ذكر</SelectItem>
+                        <SelectItem value="أنثى">أنثى</SelectItem>
+                        <SelectItem value="غير معروف">غير معروف</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="physical_description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>الوصف الجسدي</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="أدخل الوصف الجسدي"
+                      {...field}
+                      value={field.value || ""}
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="contact_info"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center">
+                    معلومات الاتصال
+                    <span className="text-red-500 mr-1">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="رقم هاتف أو بريد إلكتروني للتواصل" 
+                      {...field}
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    معلومات الاتصال ضرورية للتواصل في حالة وجود معلومات جديدة أو تحديثات هامة
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -410,189 +480,123 @@ export function SubmitForm() {
 
             <FormField
               control={form.control}
-              name="gender"
+              name="additional_notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>الجنس</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30">
-                        <SelectValue placeholder="اختر الجنس" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="ذكر">ذكر</SelectItem>
-                      <SelectItem value="أنثى">أنثى</SelectItem>
-                      <SelectItem value="غير معروف">غير معروف</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>ملاحظات إضافية</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="أدخل ملاحظات إضافية"
+                      {...field}
+                      value={field.value || ""}
+                      className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
           </div>
 
-          <FormField
-            control={form.control}
-            name="physical_description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>الوصف الجسدي</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="أدخل الوصف الجسدي"
-                    {...field}
-                    value={field.value || ""}
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+          <Button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                جاري التقديم...
+              </>
+            ) : (
+              "تقديم المعلومات"
             )}
-          />
+          </Button>
+        </form>
 
-          <FormField
-            control={form.control}
-            name="contact_info"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="flex items-center">
-                  معلومات الاتصال
-                  <span className="text-red-500 mr-1">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input 
-                    placeholder="رقم هاتف أو بريد إلكتروني للتواصل" 
-                    {...field}
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30"
-                  />
-                </FormControl>
-                <FormDescription>
-                  معلومات الاتصال ضرورية للتواصل في حالة وجود معلومات جديدة أو تحديثات هامة
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        <Dialog open={potentialMatches !== null && (potentialMatches.exactMatches.length > 0 || potentialMatches.fuzzyMatches.length > 0)} onOpenChange={(open) => {
+          if (!open) {
+            setPotentialMatches(null)
+            setFormData(null)
+            setIsSubmitConfirmed(false)
+          }
+        }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>سجلات مشابهة</DialogTitle>
+              <DialogDescription>
+                {potentialMatches?.exactMatches.length 
+                  ? "تم العثور على سجل مطابق تماماً. لا يمكن المتابعة."
+                  : "تم العثور على السجلات التالية التي قد تكون مطابقة. يرجى مراجعتها قبل المتابعة."}
+              </DialogDescription>
+            </DialogHeader>
 
-          <FormField
-            control={form.control}
-            name="additional_notes"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>ملاحظات إضافية</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="أدخل ملاحظات إضافية"
-                    {...field}
-                    value={field.value || ""}
-                    className="bg-white dark:bg-[#1a2e1a] border-[#4CAF50]/20 focus:border-[#4CAF50]/50 focus:ring-[#4CAF50]/30 resize-none"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <Button 
-          type="submit" 
-          className="w-full bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-              جاري التقديم...
-            </>
-          ) : (
-            "تقديم المعلومات"
-          )}
-        </Button>
-      </form>
-
-      <Dialog open={potentialMatches !== null && (potentialMatches.exactMatches.length > 0 || potentialMatches.fuzzyMatches.length > 0)} onOpenChange={(open) => {
-        if (!open) {
-          setPotentialMatches(null)
-          setFormData(null)
-          setIsSubmitConfirmed(false)
-        }
-      }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>سجلات مشابهة</DialogTitle>
-            <DialogDescription>
-              {potentialMatches?.exactMatches.length 
-                ? "تم العثور على سجل مطابق تماماً. لا يمكن المتابعة."
-                : "تم العثور على السجلات التالية التي قد تكون مطابقة. يرجى مراجعتها قبل المتابعة."}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {potentialMatches?.exactMatches.length ? (
-              <div>
-                <h3 className="font-semibold mb-2">تطابق تام:</h3>
-                <div className="space-y-2">
-                  {potentialMatches.exactMatches.map((match) => (
-                    <div key={match.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                      <p className="font-semibold">{match.full_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {match.status} • {match.last_seen_location}
-                        {match.date_of_detention && ` • ${match.date_of_detention}`}
-                      </p>
-                    </div>
-                  ))}
+            <div className="space-y-4">
+              {potentialMatches?.exactMatches.length ? (
+                <div>
+                  <h3 className="font-semibold mb-2">تطابق تام:</h3>
+                  <div className="space-y-2">
+                    {potentialMatches.exactMatches.map((match) => (
+                      <div key={match.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                        <p className="font-semibold">{match.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {match.status} • {match.last_seen_location}
+                          {match.date_of_detention && ` • ${match.date_of_detention}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {potentialMatches?.fuzzyMatches.length ? (
-              <div>
-                <h3 className="font-semibold mb-2">تطابق محتمل:</h3>
-                <div className="space-y-2">
-                  {potentialMatches.fuzzyMatches.map((match) => (
-                    <div key={match.id} className="p-3 bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg">
-                      <p className="font-semibold">{match.full_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {match.status} • {match.last_seen_location}
-                        {match.date_of_detention && ` • ${match.date_of_detention}`}
-                      </p>
-                    </div>
-                  ))}
+              {potentialMatches?.fuzzyMatches.length ? (
+                <div>
+                  <h3 className="font-semibold mb-2">تطابق محتمل:</h3>
+                  <div className="space-y-2">
+                    {potentialMatches.fuzzyMatches.map((match) => (
+                      <div key={match.id} className="p-3 bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg">
+                        <p className="font-semibold">{match.full_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {match.status} • {match.last_seen_location}
+                          {match.date_of_detention && ` • ${match.date_of_detention}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
 
-          <DialogFooter className="sm:justify-start space-x-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPotentialMatches(null)
-                setFormData(null)
-                setIsSubmitConfirmed(false)
-              }}
-              className="w-full sm:w-auto"
-            >
-              إغلاق
-            </Button>
-            {!potentialMatches?.exactMatches.length && potentialMatches?.fuzzyMatches.length ? (
+            <DialogFooter className="sm:justify-start space-x-2">
               <Button
-                onClick={async () => {
-                  if (formData) {
-                    setIsSubmitConfirmed(true)
-                    setPotentialMatches(null)
-                    await submitForm(formData)
-                  }
+                variant="secondary"
+                onClick={() => {
+                  setPotentialMatches(null)
+                  setFormData(null)
+                  setIsSubmitConfirmed(false)
                 }}
-                className="w-full sm:w-auto bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
+                className="w-full sm:w-auto"
               >
-                متابعة التقديم
+                إغلاق
               </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Form>
+              {!potentialMatches?.exactMatches.length && potentialMatches?.fuzzyMatches.length ? (
+                <Button
+                  onClick={async () => {
+                    if (formData) {
+                      setIsSubmitConfirmed(true)
+                      setPotentialMatches(null)
+                      await submitForm(formData)
+                    }
+                  }}
+                  className="w-full sm:w-auto bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
+                >
+                  متابعة التقديم
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Form>
+    </div>
   )
 }
