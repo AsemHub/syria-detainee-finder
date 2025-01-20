@@ -8,7 +8,7 @@ export const getErrorMessage = (error: { message: string; type: string }) => {
       if (error.message.includes('full_name')) {
         return 'حقل الاسم الكامل مطلوب';
       } else if (error.message.includes('date_of_detention')) {
-        return 'حقل تاريخ الاعتقال مطلوب';
+        return 'حقل تاريخ آخر مشاهدة مطلوب';
       } else if (error.message.includes('gender')) {
         return 'حقل الجنس مطلوب';
       } else if (error.message.includes('age_at_detention')) {

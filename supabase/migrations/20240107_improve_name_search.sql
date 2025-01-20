@@ -84,7 +84,10 @@ SELECT
     d.location_fts,
     d.description_fts,
     d.contact_fts,
-    d.search_vector
+    d.search_vector,
+    d.update_history,
+    d.last_update_by,
+    d.last_update_reason
 FROM detainees d;
 
 -- Create indexes on the materialized view
@@ -199,9 +202,11 @@ BEGIN
                         setweight(description_fts, 'C'),
                         tsquery_expression
                     ) * 
-                    -- Boost exact matches
+                    -- Boost exact matches with position-based weighting
                     CASE 
-                        WHEN full_name ILIKE '%' || query_text || '%' THEN 2.0
+                        WHEN full_name ILIKE query_text || '%' THEN 4.0  -- Highest boost for starts with
+                        WHEN full_name ILIKE '% ' || query_text || ' %' THEN 2.0  -- Medium boost for whole word match
+                        WHEN full_name ILIKE '%' || query_text || '%' THEN 1.5  -- Small boost for partial match
                         ELSE 1.0
                     END
                 ELSE 1.0
@@ -259,7 +264,10 @@ BEGIN
                         'created_at', r.created_at,
                         'last_update_date', r.last_update_date,
                         'source_organization', r.source_organization,
-                        'search_rank', r.search_rank
+                        'search_rank', r.search_rank,
+                        'update_history', r.update_history,
+                        'last_update_by', r.last_update_by,
+                        'last_update_reason', r.last_update_reason
                     )
                 )
                 FROM ranked_results r

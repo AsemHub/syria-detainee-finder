@@ -69,7 +69,7 @@ export function FileInput({ selectedFile, isUploading, onFileSelect, onError, on
               <p>يجب أن يكون الملف بتنسيق CSV ويحتوي على الأعمدة التالية:</p>
               <ul className="list-disc list-inside mt-2 text-sm">
                 <li>الاسم (مطلوب)</li>
-                <li>تاريخ الاعتقال (مطلوب)</li>
+                <li>تاريخ آخر مشاهدة (مطلوب)</li>
                 <li>مكان الاعتقال</li>
                 <li>العمر</li>
                 <li>الجنس</li>

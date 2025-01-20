@@ -163,7 +163,7 @@ const HEADER_MAPPINGS: Record<string, string> = {
   
   // Arabic without underscores
   'الاسم الكامل': 'full_name',
-  'تاريخ الاعتقال': 'date_of_detention',
+  'تاريخ آخر مشاهدة': 'date_of_detention',
   'مكان آخر مشاهدة': 'last_seen_location',
   'مكان الاحتجاز': 'detention_facility',
   'الوصف الجسدي': 'physical_description',
@@ -257,7 +257,7 @@ export function validateRecord(record: Record<string, string>): ValidationResult
   if (record.date_of_detention?.trim()) {
     const parsedDate = parseDate(record.date_of_detention);
     if (!parsedDate) {
-      errors.push('تاريخ الاعتقال غير صالح');
+      errors.push('تاريخ آخر مشاهدة غير صالح');
     }
   }
 

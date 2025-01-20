@@ -286,7 +286,7 @@ export function SearchFilters({ filters, onFiltersChangeAction }: SearchFiltersP
               </div>
 
               <div className="space-y-2">
-                <Label>تاريخ الاعتقال</Label>
+                <Label>تاريخ آخر مشاهدة</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label className="text-xs">من</Label>

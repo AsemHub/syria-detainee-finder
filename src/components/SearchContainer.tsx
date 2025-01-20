@@ -12,6 +12,7 @@ import { ar } from 'date-fns/locale';
 import { Button } from './ui/button';
 import { useToast } from "@/hooks/use-toast";
 import Logger from "@/lib/logger";
+import { WarningBanner } from './WarningBanner';
 
 type Detainee = {
     id: string;
@@ -31,6 +32,10 @@ type Detainee = {
     source_document_id?: string;
     record_validation?: string;
     record_processing_status?: string;
+    update_history?: {
+        timestamp: string;
+        update_reason: string;
+    }[];
 }
 
 interface SearchState {
@@ -249,164 +254,184 @@ export function SearchContainer() {
     }, [searchState, searchQuery]);
 
     return (
-        <div className="space-y-4">
-            <div className="w-full">
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                        <SearchBox
-                            onSearch={(query) => {
-                                setSearchQuery(query);
-                                handleSearch(query, 1, filters);
-                            }}
-                            isLoading={isLoading}
+        <div className="container mx-auto px-4 py-8">
+            <WarningBanner />
+            <div className="space-y-6">
+                <div className="w-full">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <SearchBox
+                                onSearch={(query) => {
+                                    setSearchQuery(query);
+                                    handleSearch(query, 1, filters);
+                                }}
+                                isLoading={isLoading}
+                            />
+                        </div>
+                        <SearchFilters 
+                            filters={filters} 
+                            onFiltersChangeAction={handleFiltersChange} 
                         />
                     </div>
-                    <SearchFilters 
-                        filters={filters} 
-                        onFiltersChangeAction={handleFiltersChange} 
-                    />
                 </div>
-            </div>
 
-            {/* Show message when no results found */}
-            {!isLoading && searchState.results.length === 0 && searchQuery && (
-                <div className="text-center p-4">
-                    <p className="text-lg text-muted-foreground">
-                        لم يتم العثور على نتائج للبحث عن "{searchQuery}"
+                {/* Show message when no results found */}
+                {!isLoading && searchState.results.length === 0 && searchQuery && (
+                    <div className="text-center p-4">
+                        <p className="text-lg text-muted-foreground">
+                            لم يتم العثور على نتائج للبحث عن "{searchQuery}"
+                        </p>
+                    </div>
+                )}
+
+                {/* Always show total count when we have a query and totalCount is available */}
+                {!isLoading && searchQuery && searchState.totalCount !== null && (
+                    <p className="text-muted-foreground text-sm">
+                        تم العثور على {searchState.totalCount} نتيجة
                     </p>
-                </div>
-            )}
+                )}
 
-            {/* Always show total count when we have a query and totalCount is available */}
-            {!isLoading && searchQuery && searchState.totalCount !== null && (
-                <p className="text-muted-foreground text-sm">
-                    تم العثور على {searchState.totalCount} نتيجة
-                </p>
-            )}
-
-            {searchState.results.length > 0 && (
-                <div className="space-y-4">
-                    {searchState.results.map((result) => (
-                        <Card key={result.id} className="overflow-hidden bg-card/50 hover:bg-card/80 transition-colors">
-                            <CardContent className="p-4">
-                                <div className="flex flex-col gap-4">
-                                    {/* Header with name and status */}
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <User2 className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                                            <h3 className="font-bold text-lg">{result.full_name}</h3>
+                {searchState.results.length > 0 && (
+                    <div className="space-y-4">
+                        {searchState.results.map((result) => (
+                            <Card key={result.id} className="overflow-hidden bg-card/50 hover:bg-card/80 transition-colors">
+                                <CardContent className="p-4">
+                                    <div className="flex flex-col gap-4">
+                                        {/* Header with name and status */}
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <User2 className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                                                <h3 className="font-bold text-lg">{result.full_name}</h3>
+                                            </div>
+                                            <Badge 
+                                                variant={getStatusVariant(result.status)} 
+                                                className="text-base px-4 py-1.5 font-semibold shrink-0"
+                                            >
+                                                {getStatusDisplay(result.status)}
+                                            </Badge>
                                         </div>
-                                        <Badge 
-                                            variant={getStatusVariant(result.status)} 
-                                            className="text-base px-4 py-1.5 font-semibold shrink-0"
-                                        >
-                                            {getStatusDisplay(result.status)}
-                                        </Badge>
-                                    </div>
 
-                                    {/* Personal Information */}
-                                    <div className="space-y-3">
-                                        {result.age_at_detention && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>العمر عند الاعتقال: {result.age_at_detention} سنة</span>
-                                            </div>
-                                        )}
-                                        {result.gender && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <User2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>الجنس: {result.gender}</span>
-                                            </div>
-                                        )}
-                                        {result.physical_description && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>الوصف الجسدي: {result.physical_description}</span>
-                                            </div>
-                                        )}
-                                        {result.date_of_detention && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>تاريخ الاعتقال: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
+                                        {/* Personal Information */}
+                                        <div className="space-y-3">
+                                            {result.age_at_detention && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>العمر عند الاعتقال: {result.age_at_detention} سنة</span>
+                                                </div>
+                                            )}
+                                            {result.gender && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <User2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>الجنس: {result.gender}</span>
+                                                </div>
+                                            )}
+                                            {result.physical_description && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>الوصف الجسدي: {result.physical_description}</span>
+                                                </div>
+                                            )}
+                                            {result.date_of_detention && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>تاريخ آخر مشاهدة: {format(new Date(result.date_of_detention), 'dd MMMM yyyy', { locale: ar })}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Location Information */}
+                                        <div className="space-y-3">
+                                            {result.last_seen_location && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>آخر مكان شوهد فيه: {result.last_seen_location}</span>
+                                                </div>
+                                            )}
+                                            {result.detention_facility && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>مركز الاحتجاز: {result.detention_facility}</span>
+                                                </div>
+                                            )}
+                                            {result.last_update_date && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Contact and Additional Information */}
+                                        <div className="space-y-3 border-t pt-3">
+                                            {result.contact_info && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>معلومات الاتصال: {result.contact_info}</span>
+                                                </div>
+                                            )}
+                                            {result.source_organization && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <Info className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>المصدر: {result.source_organization}</span>
+                                                </div>
+                                            )}
+                                            {result.additional_notes && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                                                    <span>ملاحظات إضافية: {result.additional_notes}</span>
+                                                </div>
+                                            )}
+                                            {result.record_validation && (
+                                                <div className="flex gap-3 text-sm items-center">
+                                                    {result.record_validation === 'verified' ? (
+                                                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                                    ) : (
+                                                        <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                                                    )}
+                                                    <span>حالة التحقق: {
+                                                        result.record_validation === 'verified' ? 'تم التحقق' :
+                                                        result.record_validation === 'pending' ? 'قيد المراجعة' :
+                                                        'لم يتم التحقق'
+                                                    }</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Update History */}
+                                        {result.update_history && result.update_history.length > 0 && (
+                                            <div className="mt-4 border-t pt-4">
+                                                <h4 className="text-sm font-semibold mb-2">سجل التحديثات:</h4>
+                                                <div className="space-y-3">
+                                                    {result.update_history.map((update, index) => (
+                                                        <div key={index} className="text-sm bg-muted/30 p-3 rounded-md">
+                                                            <p className="text-muted-foreground mb-1">
+                                                                {format(new Date(update.timestamp), 'dd MMMM yyyy', { locale: ar })}
+                                                            </p>
+                                                            <p className="font-medium">{update.update_reason}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
 
-                                    {/* Location Information */}
-                                    <div className="space-y-3">
-                                        {result.last_seen_location && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>آخر مكان شوهد فيه: {result.last_seen_location}</span>
-                                            </div>
-                                        )}
-                                        {result.detention_facility && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>مركز الاحتجاز: {result.detention_facility}</span>
-                                            </div>
-                                        )}
-                                        {result.last_update_date && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>آخر تحديث: {format(new Date(result.last_update_date), 'dd MMMM yyyy', { locale: ar })}</span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Contact and Additional Information */}
-                                    <div className="space-y-3 border-t pt-3">
-                                        {result.contact_info && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>معلومات الاتصال: {result.contact_info}</span>
-                                            </div>
-                                        )}
-                                        {result.source_organization && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <Info className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>المصدر: {result.source_organization}</span>
-                                            </div>
-                                        )}
-                                        {result.additional_notes && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                                <span>ملاحظات إضافية: {result.additional_notes}</span>
-                                            </div>
-                                        )}
-                                        {result.record_validation && (
-                                            <div className="flex gap-3 text-sm items-center">
-                                                {result.record_validation === 'verified' ? (
-                                                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                ) : (
-                                                    <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
-                                                )}
-                                                <span>حالة التحقق: {
-                                                    result.record_validation === 'verified' ? 'تم التحقق' :
-                                                    result.record_validation === 'pending' ? 'قيد المراجعة' :
-                                                    'لم يتم التحقق'
-                                                }</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            )}
-
-            {searchState.hasNextPage && (
-                <div className="flex justify-center mt-6">
-                    <Button
-                        onClick={loadMore}
-                        disabled={isLoading}
-                        className="min-w-[200px]"
-                    >
-                        {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
-                    </Button>
-                </div>
-            )}
+                {searchState.hasNextPage && (
+                    <div className="flex justify-center mt-6">
+                        <Button
+                            onClick={loadMore}
+                            disabled={isLoading}
+                            className="min-w-[200px]"
+                        >
+                            {isLoading ? 'جاري التحميل...' : 'تحميل المزيد'}
+                        </Button>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

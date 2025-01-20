@@ -61,6 +61,9 @@ const submitSchema = z.object({
     .max(1000, "Additional notes must be less than 1000 characters")
     .nullable()
     .optional(),
+  // Add new fields for handling duplicates
+  known_similar_records: z.array(z.string()).optional(),
+  is_intentional_duplicate: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -115,6 +118,11 @@ export async function POST(request: Request) {
           additional_notes: validatedData.additional_notes ?? null,
           last_update_date: now,
           source_organization: "Public",
+          // Add metadata about known similar records
+          metadata: validatedData.known_similar_records?.length ? {
+            known_similar_records: validatedData.known_similar_records,
+            is_intentional_duplicate: true
+          } : null
         });
 
       if (error) {

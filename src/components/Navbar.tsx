@@ -35,7 +35,7 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
               className="text-4xl md:text-5xl font-black whitespace-nowrap relative group"
             >
-              <span className="bg-gradient-to-b from-[#239F40] from-30% via-[#FF0000] via-45% to-[#000000] to-65% inline-block text-transparent bg-clip-text">شارك</span>
+              <span className="bg-gradient-to-b from-[#007A3D] from-0% via-[#FFFFFF] via-50% to-[#000000] to-70% inline-block text-transparent bg-clip-text">شارك</span>
             </Link>
           </div>
 

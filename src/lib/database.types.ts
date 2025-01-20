@@ -30,6 +30,15 @@ export interface SearchParams {
   dateTo?: string;
 }
 
+export interface UpdateHistoryEntry {
+  timestamp: string;
+  previous_values: {
+    contact_info?: string;
+    additional_notes?: string;
+  };
+  update_reason: string;
+}
+
 export interface SearchResult {
   id: string;
   full_name: string;
@@ -47,6 +56,9 @@ export interface SearchResult {
   last_update_date: string;
   source_organization: string;
   search_rank?: number;
+  update_history?: UpdateHistoryEntry[];
+  last_update_by?: string;
+  last_update_reason?: string;
 }
 
 export interface SearchResponse {

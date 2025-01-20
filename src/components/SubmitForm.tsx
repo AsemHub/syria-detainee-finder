@@ -101,6 +101,9 @@ export function SubmitForm() {
   } | null>(null)
   const [formData, setFormData] = useState<FormData | null>(null)
   const [isSubmitConfirmed, setIsSubmitConfirmed] = useState(false)
+  const [selectedMatch, setSelectedMatch] = useState<DetaineeMatch | null>(null);
+  const [updateReason, setUpdateReason] = useState("");
+  const [updateMode, setUpdateMode] = useState(false);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -228,6 +231,9 @@ export function SubmitForm() {
       const formattedValues = {
         ...values,
         date_of_detention: values.date_of_detention ? format(values.date_of_detention, 'yyyy-MM-dd') : null,
+        // Add fuzzy match information if available
+        known_similar_records: potentialMatches?.fuzzyMatches?.map(match => match.id) || [],
+        is_intentional_duplicate: isSubmitConfirmed,
       };
 
       const response = await fetch("/api/submit", {
@@ -273,9 +279,174 @@ export function SubmitForm() {
     }
   }
 
+  const updateExistingRecord = async (recordId: string, values: FormData) => {
+    setIsSubmitting(true);
+    toast({
+      title: "جاري التحديث...",
+      description: "يتم تحديث السجل الموجود",
+      duration: 2000,
+    });
+
+    try {
+      const response = await fetch("/api/update-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordId,
+          updates: {
+            contact_info: values.contact_info,
+            additional_notes: values.additional_notes,
+          },
+          updateReason,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("فشل في تحديث السجل");
+      }
+
+      toast({
+        title: "تم التحديث بنجاح",
+        description: "تم تحديث السجل بنجاح",
+        duration: 4000,
+      });
+      resetForm();
+      setUpdateMode(false);
+      setSelectedMatch(null);
+    } catch (error) {
+      toast({
+        title: "خطأ في التحديث",
+        description: error instanceof Error ? error.message : "فشل في تحديث السجل",
+        variant: "destructive",
+        duration: 4000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderMatchDialog = () => (
+    <Dialog open={!!potentialMatches && (potentialMatches.exactMatches.length > 0 || potentialMatches.fuzzyMatches.length > 0)} onOpenChange={() => setPotentialMatches(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>سجلات مطابقة</DialogTitle>
+          <DialogDescription>
+            تم العثور على سجلات مطابقة أو مشابهة. يرجى مراجعة السجلات التالية:
+          </DialogDescription>
+        </DialogHeader>
+
+        {potentialMatches?.exactMatches.length ? (
+          <div className="space-y-4">
+            <h3 className="font-semibold">سجلات مطابقة تماماً:</h3>
+            {potentialMatches.exactMatches.map((match) => (
+              <div key={match.id} className="p-4 border rounded-lg space-y-2">
+                <p><strong>الاسم:</strong> {match.full_name}</p>
+                <p><strong>الحالة:</strong> {match.status}</p>
+                <p><strong>آخر موقع:</strong> {match.last_seen_location || 'غير متوفر'}</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedMatch(match);
+                    setUpdateMode(true);
+                  }}
+                >
+                  تحديث هذا السجل
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {potentialMatches?.fuzzyMatches.length ? (
+          <div className="space-y-4">
+            <h3 className="font-semibold">سجلات مشابهة:</h3>
+            {potentialMatches.fuzzyMatches.map((match) => (
+              <div key={match.id} className="p-4 border rounded-lg space-y-2">
+                <p><strong>الاسم:</strong> {match.full_name}</p>
+                <p><strong>الحالة:</strong> {match.status}</p>
+                <p><strong>آخر موقع:</strong> {match.last_seen_location || 'غير متوفر'}</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedMatch(match);
+                    setUpdateMode(true);
+                  }}
+                >
+                  تحديث هذا السجل
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <DialogFooter className="gap-2">
+          {!updateMode && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                setIsSubmitConfirmed(true);
+                setPotentialMatches(null);
+                // Submit the form with the current form data
+                if (formData) {
+                  await submitForm(formData);
+                }
+              }}
+            >
+              متابعة كسجل جديد
+            </Button>
+          )}
+          <Button type="button" variant="secondary" onClick={() => setPotentialMatches(null)}>
+            إلغاء
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderUpdateDialog = () => (
+    <Dialog open={updateMode} onOpenChange={(open) => !open && setUpdateMode(false)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>تحديث السجل</DialogTitle>
+          <DialogDescription>
+            سيتم إضافة المعلومات الجديدة إلى السجل الموجود. يرجى تقديم سبب التحديث:
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <Textarea
+            value={updateReason}
+            onChange={(e) => setUpdateReason(e.target.value)}
+            placeholder="سبب التحديث..."
+            className="min-h-[100px]"
+          />
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={() => {
+              if (!selectedMatch || !formData) return;
+              updateExistingRecord(selectedMatch.id, formData);
+            }}
+            disabled={!updateReason.trim()}
+          >
+            تأكيد التحديث
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setUpdateMode(false)}>
+            إلغاء
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-6">
       <WarningBanner />
+      {renderMatchDialog()}
+      {renderUpdateDialog()}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 bg-gradient-to-b from-[#f0f8f0] to-[#e6f3e6] dark:from-[#1a2e1a] dark:to-[#0f1f0f] p-6 rounded-lg border border-[#4CAF50]/10">
           <div className="space-y-2 text-center">
@@ -314,7 +485,7 @@ export function SubmitForm() {
               name="date_of_detention"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>تاريخ الاعتقال</FormLabel>
+                  <FormLabel>تاريخ آخر مشاهدة</FormLabel>
                   <FormControl>
                     <div className="bg-white dark:bg-[#1a2e1a] rounded-md border border-[#4CAF50]/20 focus-within:border-[#4CAF50]/50 focus-within:ring-2 focus-within:ring-[#4CAF50]/30">
                       <DatePickerInput value={field.value} onChange={field.onChange} />
@@ -513,89 +684,6 @@ export function SubmitForm() {
             )}
           </Button>
         </form>
-
-        <Dialog open={potentialMatches !== null && (potentialMatches.exactMatches.length > 0 || potentialMatches.fuzzyMatches.length > 0)} onOpenChange={(open) => {
-          if (!open) {
-            setPotentialMatches(null)
-            setFormData(null)
-            setIsSubmitConfirmed(false)
-          }
-        }}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>سجلات مشابهة</DialogTitle>
-              <DialogDescription>
-                {potentialMatches?.exactMatches.length 
-                  ? "تم العثور على سجل مطابق تماماً. لا يمكن المتابعة."
-                  : "تم العثور على السجلات التالية التي قد تكون مطابقة. يرجى مراجعتها قبل المتابعة."}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              {potentialMatches?.exactMatches.length ? (
-                <div>
-                  <h3 className="font-semibold mb-2">تطابق تام:</h3>
-                  <div className="space-y-2">
-                    {potentialMatches.exactMatches.map((match) => (
-                      <div key={match.id} className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                        <p className="font-semibold">{match.full_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {match.status} • {match.last_seen_location}
-                          {match.date_of_detention && ` • ${match.date_of_detention}`}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {potentialMatches?.fuzzyMatches.length ? (
-                <div>
-                  <h3 className="font-semibold mb-2">تطابق محتمل:</h3>
-                  <div className="space-y-2">
-                    {potentialMatches.fuzzyMatches.map((match) => (
-                      <div key={match.id} className="p-3 bg-yellow-50/50 dark:bg-yellow-900/10 rounded-lg">
-                        <p className="font-semibold">{match.full_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {match.status} • {match.last_seen_location}
-                          {match.date_of_detention && ` • ${match.date_of_detention}`}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <DialogFooter className="sm:justify-start space-x-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setPotentialMatches(null)
-                  setFormData(null)
-                  setIsSubmitConfirmed(false)
-                }}
-                className="w-full sm:w-auto"
-              >
-                إغلاق
-              </Button>
-              {!potentialMatches?.exactMatches.length && potentialMatches?.fuzzyMatches.length ? (
-                <Button
-                  onClick={async () => {
-                    if (formData) {
-                      setIsSubmitConfirmed(true)
-                      setPotentialMatches(null)
-                      await submitForm(formData)
-                    }
-                  }}
-                  className="w-full sm:w-auto bg-gradient-to-r from-[#2e7d32] to-[#4CAF50] hover:from-[#1b5e20] hover:to-[#388E3C] text-white"
-                >
-                  متابعة التقديم
-                </Button>
-              ) : null}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </Form>
     </div>
   )
