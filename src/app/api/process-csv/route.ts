@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Papa from 'papaparse';
 import Logger from '@/lib/logger';
-import { normalizeArabicText } from '@/lib/arabic-utils';
-import { validateGender, validateStatus } from '@/lib/validation';
+import { normalizeArabicText, convertArabicNumerals } from '@/lib/arabic-utils';
+import { validateGender, validateStatus, validateAge } from '@/lib/validation';
 import { Database } from '@/lib/database.types';
 import dayjs from 'dayjs';
 
@@ -64,8 +64,9 @@ interface CsvRecord {
 }
 
 // Helper function to normalize record fields
-function normalizeRecord(record: CsvRecord): Record<string, string> {
+function normalizeRecord(record: CsvRecord): { normalized: Record<string, string>, errors: Array<{ type: string, message: string }> } {
   const normalized: Record<string, string> = {};
+  const errors: Array<{ type: string, message: string }> = [];
   
   // Map English/Arabic fields to normalized names
   const fieldMappings = {
@@ -86,11 +87,14 @@ function normalizeRecord(record: CsvRecord): Record<string, string> {
   for (const [key, value] of Object.entries(fieldMappings)) {
     // Handle special cases for age and dates
     if (key === 'age_at_detention' && value) {
-      // Try to extract numeric value from age field
+      // Validate age before normalization
+      if (!validateAge(value)) {
+        errors.push({ type: 'invalid_age', message: 'العمر يجب أن يكون رقماً صحيحاً بين 0 و 120' });
+        continue;
+      }
       const numericAge = value.replace(/[^\d]/g, '');
       normalized[key] = numericAge || '';
     } else if (key === 'date_of_detention' && value) {
-      // Try to parse date in various formats
       const dateFormats = ['YYYY-MM-DD', 'DD-MM-YYYY', 'DD/MM/YYYY', 'YYYY/MM/DD'];
       let parsedDate = null;
       for (const format of dateFormats) {
@@ -101,13 +105,101 @@ function normalizeRecord(record: CsvRecord): Record<string, string> {
         }
       }
       normalized[key] = parsedDate || value;
+    } else if (key === 'contact_info') {
+      // Convert Arabic numerals and clean phone number
+      const cleanedNumber = convertArabicNumerals(value)
+        ?.replace(/[^\d+]/g, '') // Remove non-digit characters except +
+        .trim();
+      normalized[key] = cleanedNumber || '';
     } else {
-      // Normal text field normalization
       normalized[key] = normalizeArabicText(String(value || '').trim());
     }
   }
 
-  return normalized;
+  return { normalized, errors };
+}
+
+// Helper function to store validation errors
+async function storeValidationErrors(
+  sessionId: string,
+  record: any,
+  errors: Array<{ type: string, message: string }>
+) {
+  try {
+    const inserts = errors.map(error => ({
+      record_id: sessionId,
+      field_name: error.type.replace('_', ' '),
+      message: error.message,
+      severity: 'خطأ',
+      created_at: new Date().toISOString()
+    }));
+
+    const { error } = await supabase
+      .from('validation_feedback')
+      .insert(inserts);
+
+    if (error) {
+      Logger.error('Failed to store validation errors', { 
+        error: error.message,
+        sessionId,
+        recordId: record?.id || 'unknown',
+        errors
+      });
+    } else {
+      Logger.info('Successfully stored validation errors', {
+        sessionId,
+        recordId: record?.id || 'unknown',
+        errorCount: errors.length
+      });
+    }
+  } catch (error) {
+    Logger.error('Error storing validation errors', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      sessionId,
+      recordId: record?.id || 'unknown'
+    });
+  }
+}
+
+// Helper function to store CSV upload record
+async function storeCsvUploadRecord(
+  sessionId: string,
+  detaineeId: string,
+  rowNumber: number,
+  originalData: any
+) {
+  try {
+    const { error } = await supabase
+      .from('csv_upload_records')
+      .insert({
+        session_id: sessionId,
+        detainee_id: detaineeId,
+        row_number: rowNumber,
+        original_data: originalData
+      });
+
+    if (error) {
+      Logger.error('Failed to store CSV upload record', {
+        error: error.message,
+        sessionId,
+        detaineeId,
+        rowNumber
+      });
+    } else {
+      Logger.info('Successfully stored CSV upload record', {
+        sessionId,
+        detaineeId,
+        rowNumber
+      });
+    }
+  } catch (error) {
+    Logger.error('Error storing CSV upload record', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      sessionId,
+      detaineeId,
+      rowNumber
+    });
+  }
 }
 
 export async function POST(request: Request) {
@@ -206,22 +298,15 @@ export async function POST(request: Request) {
 
         try {
           // Map and validate record
-          const mappedRecord = normalizeRecord(record);
+          const { normalized: mappedRecord, errors: normalizationErrors } = normalizeRecord(record);
+          recordErrors.push(...normalizationErrors);
 
           // Validate required fields
-          const requiredFields = ['full_name', 'date_of_detention', 'gender', 'age_at_detention', 'last_seen_location', 'status'];
+          const requiredFields = ['full_name', 'date_of_detention', 'gender', 'age_at_detention', 'last_seen_location', 'status', 'contact_info'];
           for (const field of requiredFields) {
             const value = mappedRecord[field];
             if (!value || value.trim() === '') {
               recordErrors.push({ type: 'missing_required', message: field });
-            }
-          }
-
-          // Validate data types and formats
-          if (mappedRecord.age_at_detention) {
-            const age = Number(mappedRecord.age_at_detention);
-            if (isNaN(age) || age < 0 || age > 120) {
-              recordErrors.push({ type: 'invalid_age', message: mappedRecord.age_at_detention });
             }
           }
 
@@ -256,6 +341,7 @@ export async function POST(request: Request) {
               record: mappedRecord.full_name || `Record ${recordIndex + 1}`,
               errors: recordErrors
             });
+            await storeValidationErrors(sessionId, record, recordErrors);
             continue;
           }
 
@@ -272,13 +358,14 @@ export async function POST(request: Request) {
               record: mappedRecord.full_name || `Record ${recordIndex + 1}`,
               errors: [{ type: 'duplicate', message: 'Record already exists' }]
             });
+            await storeValidationErrors(sessionId, record, [{ type: 'duplicate', message: 'Record already exists' }]);
             continue;
           }
 
           // Map record to database schema
           const detaineeRecord = {
             full_name: mappedRecord.full_name,
-            original_name: mappedRecord.full_name, // Store original name
+            original_name: mappedRecord.full_name,
             date_of_detention: mappedRecord.date_of_detention,
             last_seen_location: mappedRecord.last_seen_location,
             detention_facility: mappedRecord.detention_facility,
@@ -292,32 +379,45 @@ export async function POST(request: Request) {
             last_update_date: new Date().toISOString()
           };
 
-          // Insert valid record
+          // Insert valid record into database with proper typing
           Logger.info('Attempting to insert record', { detaineeRecord });
           const { data: insertedData, error: insertError } = await supabase
             .from('detainees')
-            .insert(detaineeRecord);
-          
-          if (insertError) {
+            .insert(detaineeRecord)
+            .select()
+            .single();
+
+          if (insertError || !insertedData) {
             Logger.error('Failed to insert record', { error: insertError, record: detaineeRecord });
             invalidRecords++;
             errors.push({
               record: detaineeRecord.full_name || `Record ${recordIndex + 1}`,
-              errors: [{ type: 'insertion_error', message: insertError.message }]
+              errors: [{ type: 'insertion_error', message: insertError?.message || 'Insertion failed' }]
             });
+            await storeValidationErrors(sessionId, record, [{ type: 'insertion_error', message: insertError?.message || 'Insertion failed' }]);
             continue;
           }
-          
+
           Logger.info('Successfully inserted record', { insertedData });
           validRecords++;
+
+          // Store CSV upload record only if insertion was successful
+          await storeCsvUploadRecord(
+            sessionId,
+            insertedData.id,
+            recordIndex + 1,
+            record
+          );
 
         } catch (error) {
           Logger.error('Error processing record', { error });
           invalidRecords++;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           errors.push({
             record: record.full_name || record.الاسم_الكامل || `Record ${recordIndex + 1}`,
-            errors: [{ type: 'processing_error', message: error instanceof Error ? error.message : 'Unknown error' }]
+            errors: [{ type: 'processing_error', message: errorMessage }]
           });
+          await storeValidationErrors(sessionId, record, [{ type: 'processing_error', message: errorMessage }]);
         }
 
         // Update progress

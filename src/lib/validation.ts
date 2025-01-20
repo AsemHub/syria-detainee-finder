@@ -28,7 +28,7 @@ export function parseDate(dateStr: string): string | null {
   // Try parsing different date formats
   const formats = [
     'YYYY-MM-DD',
-    'DD-MM-YYYY',
+    'DD-MM-YYYY', 
     'DD/MM/YYYY',
     'YYYY/MM/DD'
   ];
@@ -213,14 +213,20 @@ export function convertArabicNumerals(text: string | null | undefined): string |
   );
 }
 
-// Validate age
+// Validate age with stricter checks
 export function validateAge(age: string | number | null | undefined): boolean {
   if (!age) return false;
   
   // Convert Arabic numerals if the age is a string
   if (typeof age === 'string') {
+    // First check if the string contains only digits
+    if (!/^\d+$/.test(age)) {
+      return false;
+    }
+    
     const convertedAge = convertArabicNumerals(age);
     if (!convertedAge) return false;
+    
     const numericAge = parseInt(convertedAge, 10);
     return !isNaN(numericAge) && numericAge >= 0 && numericAge <= 120;
   }
@@ -257,7 +263,9 @@ export function validateRecord(record: Record<string, string>): ValidationResult
 
   // Validate age if provided
   if (record.age_at_detention?.trim()) {
-    if (!validateAge(record.age_at_detention)) {
+    if (!/^\d+$/.test(record.age_at_detention.trim())) {
+      errors.push('العمر يجب أن يكون رقماً صحيحاً');
+    } else if (!validateAge(record.age_at_detention)) {
       errors.push('العمر يجب أن يكون بين 0 و 120');
     }
   }

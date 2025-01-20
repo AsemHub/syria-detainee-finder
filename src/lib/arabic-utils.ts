@@ -1,6 +1,16 @@
 // Arabic text normalization and utilities
 
 /**
+ * Convert Arabic numerals to Western numerals
+ */
+export function convertArabicNumerals(text: string | null | undefined): string | null | undefined {
+  if (!text) return text;
+  return text.replace(/[٠١٢٣٤٥٦٧٨٩]/g, char => 
+    String.fromCharCode(char.charCodeAt(0) - '٠'.charCodeAt(0) + '0'.charCodeAt(0))
+  );
+}
+
+/**
  * Normalize Arabic text by:
  * 1. Removing diacritics (tashkeel)
  * 2. Normalizing different forms of Alef and Hamza

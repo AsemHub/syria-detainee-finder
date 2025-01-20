@@ -4,6 +4,9 @@ WHERE table_schema = 'public';
 
 [
   {
+    "table_name": "detainee_stats"
+  },
+  {
     "table_name": "upload_sessions"
   },
   {
@@ -97,7 +100,7 @@ AND table_name = 'detainees';
     "table_name": "detainees",
     "column_name": "contact_info",
     "data_type": "text",
-    "is_nullable": "YES",
+    "is_nullable": "NO",
     "column_default": null
   },
   {
@@ -204,7 +207,7 @@ AND tc.table_name = 'detainees';
     "table_name": "detainees",
     "constraint_name": "detainees_check",
     "contype": "c",
-    "constraint_definition": "CHECK ((last_update_date >= created_at))"
+    "constraint_definition": "CHECK (((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'مطلق سراح'::text, 'متوفى'::text, 'غير معروف'::text])) AND (gender = ANY (ARRAY['ذكر'::text, 'أنثى'::text, 'غير معروف'::text])) AND ((age_at_detention IS NULL) OR ((age_at_detention >= 0) AND (age_at_detention <= 120)))))"
   },
   {
     "table_name": "detainees",
@@ -234,7 +237,7 @@ AND tc.table_name = 'detainees';
     "table_name": "detainees",
     "constraint_name": "detainees_status_check",
     "contype": "c",
-    "constraint_definition": "CHECK ((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مطلق سراح'::text, 'متوفى'::text, 'غير معروف'::text])))"
+    "constraint_definition": "CHECK ((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'مطلق سراح'::text, 'متوفى'::text, 'غير معروف'::text])))"
   }
 ]
 
@@ -248,6 +251,26 @@ AND tablename = 'detainees';
     "tablename": "detainees",
     "indexname": "unique_detainee_record_normalized",
     "indexdef": "CREATE UNIQUE INDEX unique_detainee_record_normalized ON public.detainees USING btree (normalized_name, effective_date) WHERE (normalized_name IS NOT NULL)"
+  },
+  {
+    "tablename": "detainees",
+    "indexname": "idx_detainees_name_fts",
+    "indexdef": "CREATE INDEX idx_detainees_name_fts ON public.detainees USING gin (name_fts)"
+  },
+  {
+    "tablename": "detainees",
+    "indexname": "idx_detainees_location_fts",
+    "indexdef": "CREATE INDEX idx_detainees_location_fts ON public.detainees USING gin (location_fts)"
+  },
+  {
+    "tablename": "detainees",
+    "indexname": "idx_detainees_description_fts",
+    "indexdef": "CREATE INDEX idx_detainees_description_fts ON public.detainees USING gin (description_fts)"
+  },
+  {
+    "tablename": "detainees",
+    "indexname": "idx_detainees_search_vector",
+    "indexdef": "CREATE INDEX idx_detainees_search_vector ON public.detainees USING gin (search_vector)"
   },
   {
     "tablename": "detainees",
