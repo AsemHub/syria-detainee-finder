@@ -6,15 +6,15 @@ export default function AboutPage() {
     <div className="container mx-auto py-12 px-4" dir="rtl">
       <div className="max-w-3xl mx-auto space-y-12">
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-8">باحث عن المعتقلين والمغيبين قسراً في سوريا</h1>
+          <h1 className="text-2xl md:text-4xl font-bold mb-6">باحث عن المعتقلين والمغيبين قسراً في سوريا</h1>
           
-          <p className="text-lg text-muted-foreground leading-relaxed">
+          <p className="text-sm md:text-lg text-muted-foreground leading-relaxed">
             منصة إنسانية مكرسة لمساعدة العائلات في العثور على
             أحبائهم المعتقلين والمغيبين قسراً في سوريا. مهمتنا هي توفير قاعدة بيانات مركزية وسهلة الوصول
             تساعد في البحث والتوثيق.
           </p>
 
-          <p className="text-md text-muted-foreground/80 leading-relaxed">
+          <p className="text-xs md:text-md text-muted-foreground/80 leading-relaxed mt-4">
             نعلم أن مصطلحي "معتقل" و"مغيب قسراً" يستخدمان بشكل متبادل في سوريا. يمكنك استخدام أي منهما حسب ما تراه مناسباً.
           </p>
         </div>

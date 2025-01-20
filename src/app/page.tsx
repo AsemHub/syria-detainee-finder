@@ -8,11 +8,11 @@ export default function Home() {
   return (
     <div className="container py-6 space-y-8" dir="rtl">
       <div className="space-y-4 text-center">
-        <h1 className="text-4xl font-bold tracking-tight">
-          الباحث عن المفقودين والمغيبين قسراً في سوريا
+        <h1 className="text-2xl md:text-4xl font-bold tracking-tight">
+          ابحث عن المفقودين والمغيبين قسراً في سوريا أو قدم أي معلومات عنهم
         </h1>
-        <p className="text-muted-foreground text-lg">
-          منصة إنسانية مخصصة للحصول على أو توفير معلومات عن المفقودين والمغيبين قسراً والمعتقلين في سوريا
+        <p className="text-muted-foreground text-sm md:text-lg">
+          شارك هي منصة إنسانية مخصصة للحصول على أو توفير معلومات عن المفقودين والمغيبين قسراً والمعتقلين في سوريا
         </p>
       </div>
 
