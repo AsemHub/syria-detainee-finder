@@ -19,7 +19,7 @@ BEGIN
     RETURN CASE status
         WHEN 'in_custody' THEN 'معتقل'
         WHEN 'missing' THEN 'مفقود'
-        WHEN 'released' THEN 'مطلق سراح'
+        WHEN 'released' THEN 'محرر'
         WHEN 'deceased' THEN 'متوفى'
         WHEN 'forcibly_disappeared' THEN 'مغيب قسراً'
         WHEN 'unknown' THEN 'غير معروف'

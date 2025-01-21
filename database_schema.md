@@ -186,6 +186,34 @@ AND table_name = 'detainees';
     "data_type": "date",
     "is_nullable": "YES",
     "column_default": null
+  },
+  {
+    "table_name": "detainees",
+    "column_name": "update_history",
+    "data_type": "ARRAY",
+    "is_nullable": "YES",
+    "column_default": "ARRAY[]::jsonb[]"
+  },
+  {
+    "table_name": "detainees",
+    "column_name": "last_update_by",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "detainees",
+    "column_name": "last_update_reason",
+    "data_type": "text",
+    "is_nullable": "YES",
+    "column_default": null
+  },
+  {
+    "table_name": "detainees",
+    "column_name": "metadata",
+    "data_type": "jsonb",
+    "is_nullable": "YES",
+    "column_default": null
   }
 ]
 
@@ -207,7 +235,7 @@ AND tc.table_name = 'detainees';
     "table_name": "detainees",
     "constraint_name": "detainees_check",
     "contype": "c",
-    "constraint_definition": "CHECK (((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'مطلق سراح'::text, 'متوفى'::text, 'غير معروف'::text])) AND (gender = ANY (ARRAY['ذكر'::text, 'أنثى'::text, 'غير معروف'::text])) AND ((age_at_detention IS NULL) OR ((age_at_detention >= 0) AND (age_at_detention <= 120)))))"
+    "constraint_definition": "CHECK (((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'محرر'::text, 'متوفى'::text, 'غير معروف'::text])) AND (gender = ANY (ARRAY['ذكر'::text, 'أنثى'::text, 'غير معروف'::text])) AND ((age_at_detention IS NULL) OR ((age_at_detention >= 0) AND (age_at_detention <= 120)))))"
   },
   {
     "table_name": "detainees",
@@ -237,7 +265,7 @@ AND tc.table_name = 'detainees';
     "table_name": "detainees",
     "constraint_name": "detainees_status_check",
     "contype": "c",
-    "constraint_definition": "CHECK ((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'مطلق سراح'::text, 'متوفى'::text, 'غير معروف'::text])))"
+    "constraint_definition": "CHECK ((status = ANY (ARRAY['معتقل'::text, 'مفقود'::text, 'مغيب قسراً'::text, 'محرر'::text, 'متوفى'::text, 'غير معروف'::text])))"
   }
 ]
 
@@ -249,13 +277,13 @@ AND tablename = 'detainees';
 [
   {
     "tablename": "detainees",
-    "indexname": "unique_detainee_record_normalized",
-    "indexdef": "CREATE UNIQUE INDEX unique_detainee_record_normalized ON public.detainees USING btree (normalized_name, effective_date) WHERE (normalized_name IS NOT NULL)"
+    "indexname": "idx_detainees_name_fts",
+    "indexdef": "CREATE INDEX idx_detainees_name_fts ON public.detainees USING gin (name_fts)"
   },
   {
     "tablename": "detainees",
-    "indexname": "idx_detainees_name_fts",
-    "indexdef": "CREATE INDEX idx_detainees_name_fts ON public.detainees USING gin (name_fts)"
+    "indexname": "idx_detainees_update_history",
+    "indexdef": "CREATE INDEX idx_detainees_update_history ON public.detainees USING gin (update_history)"
   },
   {
     "tablename": "detainees",
@@ -274,6 +302,11 @@ AND tablename = 'detainees';
   },
   {
     "tablename": "detainees",
+    "indexname": "unique_detainee_record_normalized",
+    "indexdef": "CREATE UNIQUE INDEX unique_detainee_record_normalized ON public.detainees USING btree (normalized_name, effective_date) WHERE (normalized_name IS NOT NULL)"
+  },
+  {
+    "tablename": "detainees",
     "indexname": "detainees_pkey",
     "indexdef": "CREATE UNIQUE INDEX detainees_pkey ON public.detainees USING btree (id)"
   },
@@ -281,40 +314,10 @@ AND tablename = 'detainees';
     "tablename": "detainees",
     "indexname": "idx_detainees_search_arabic",
     "indexdef": "CREATE INDEX idx_detainees_search_arabic ON public.detainees USING gin (search_vector)"
-  }
-]
-
-5. SELECT event_object_table, trigger_name, action_timing, event_manipulation, action_statement
-FROM information_schema.triggers
-WHERE event_object_table = 'detainees';
-
-[
-  {
-    "event_object_table": "detainees",
-    "trigger_name": "detainee_search_vector_arabic_update",
-    "action_timing": "BEFORE",
-    "event_manipulation": "INSERT",
-    "action_statement": "EXECUTE FUNCTION update_detainee_search_vector_arabic()"
   },
   {
-    "event_object_table": "detainees",
-    "trigger_name": "detainee_search_vector_arabic_update",
-    "action_timing": "BEFORE",
-    "event_manipulation": "UPDATE",
-    "action_statement": "EXECUTE FUNCTION update_detainee_search_vector_arabic()"
-  },
-  {
-    "event_object_table": "detainees",
-    "trigger_name": "detainee_validation_arabic_trigger",
-    "action_timing": "AFTER",
-    "event_manipulation": "INSERT",
-    "action_statement": "EXECUTE FUNCTION validate_detainee_record_arabic()"
-  },
-  {
-    "event_object_table": "detainees",
-    "trigger_name": "detainee_validation_arabic_trigger",
-    "action_timing": "AFTER",
-    "event_manipulation": "UPDATE",
-    "action_statement": "EXECUTE FUNCTION validate_detainee_record_arabic()"
+    "tablename": "detainees",
+    "indexname": "idx_detainees_metadata",
+    "indexdef": "CREATE INDEX idx_detainees_metadata ON public.detainees USING gin (metadata)"
   }
 ]

@@ -40,7 +40,7 @@ This guide explains how to correctly fill out the detainee form.
 - **Valid Values**:
   - معتقل
   - مفقود
-  - مطلق سراح
+  - محرر
   - متوفى
   - غير معروف
 

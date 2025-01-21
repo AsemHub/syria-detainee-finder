@@ -66,7 +66,7 @@ const formSchema = z.object({
     .refine(val => !val || (!isNaN(Number(val)) && Number(val) >= 0 && Number(val) <= 120), "العمر يجب أن يكون بين 0 و 120")
     .optional()
     .transform(val => val || ""),
-  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "مغيب قسراً", "غير معروف"] as const)
+  status: z.enum(["معتقل", "مفقود", "محرر", "متوفى", "مغيب قسراً", "غير معروف"] as const)
     .optional()
     .default("مفقود"),
   gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const)
@@ -568,7 +568,7 @@ export function SubmitForm() {
                       <SelectContent>
                         <SelectItem value="معتقل">معتقل</SelectItem>
                         <SelectItem value="مفقود">مفقود</SelectItem>
-                        <SelectItem value="مطلق سراح">مطلق سراح</SelectItem>
+                        <SelectItem value="محرر">محرر</SelectItem>
                         <SelectItem value="متوفى">متوفى</SelectItem>
                         <SelectItem value="مغيب قسراً">مغيب قسراً</SelectItem>
                         <SelectItem value="غير معروف">غير معروف</SelectItem>

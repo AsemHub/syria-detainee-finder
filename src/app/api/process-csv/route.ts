@@ -454,6 +454,18 @@ export async function POST(request: Request) {
       })
       .eq('id', sessionId);
 
+    // Refresh materialized view after successful processing
+    const { error: refreshError } = await supabase
+      .rpc('refresh_mv_detainees_search');
+
+    if (refreshError) {
+      Logger.error('Failed to refresh materialized view', { error: refreshError });
+      return NextResponse.json(
+        { error: 'Failed to refresh search index' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     Logger.error('Error processing CSV', { error });

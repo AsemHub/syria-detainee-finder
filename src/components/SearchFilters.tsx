@@ -180,7 +180,7 @@ export function SearchFilters({ filters, onFiltersChangeAction }: SearchFiltersP
   const statusOptions = [
     { value: 'معتقل', label: 'معتقل' },
     { value: 'مفقود', label: 'مفقود' },
-    { value: 'مطلق سراح', label: 'مطلق سراح' },
+    { value: 'محرر', label: 'محرر' },
     { value: 'متوفى', label: 'متوفى' },
     { value: 'مغيب قسراً', label: 'مغيب قسراً' },
     { value: 'غير معروف', label: 'غير معروف' }

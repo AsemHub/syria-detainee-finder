@@ -26,7 +26,7 @@ export const getErrorMessage = (error: { message: string; type: string }) => {
     case 'invalid_gender':
       return 'الجنس يجب أن يكون أحد الخيارات التالية: ذكر، أنثى، غير محدد';
     case 'invalid_status':
-      return 'الحالة يجب أن تكون أحد الخيارات التالية: معتقل، مفقود، مطلق سراح، متوفى، غير معروف';
+      return 'الحالة يجب أن تكون أحد الخيارات التالية: معتقل، مفقود، محرر، متوفى، غير معروف';
     case 'invalid_data':
       return error.message;
     default:

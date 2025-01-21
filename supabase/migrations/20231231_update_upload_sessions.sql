@@ -96,7 +96,7 @@ CREATE TABLE detainees (
     physical_description TEXT,
     age_at_detention INT CHECK (age_at_detention BETWEEN 0 AND 120),
     gender TEXT CHECK (gender IN ('ذكر', 'أنثى', 'غير معروف')),
-    status TEXT CHECK (status IN ('معتقل', 'مفقود', 'مطلق سراح', 'متوفى', 'غير معروف')),
+    status TEXT CHECK (status IN ('معتقل', 'مفقود', 'محرر', 'متوفى', 'غير معروف')),
     contact_info TEXT,
     additional_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),

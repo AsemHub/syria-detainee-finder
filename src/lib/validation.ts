@@ -77,7 +77,7 @@ export function parseDate(dateStr: string): string | null {
 
 // Constants matching database constraints
 export const VALID_GENDERS = ['ذكر', 'أنثى', 'انثى', 'انثي', 'غير معروف', 'male', 'female', 'unknown'] as const;
-export const VALID_STATUSES = ['معتقل', 'مفقود', 'مطلق سراح', 'متوفى', 'متوفي', 'مغيب قسراً', 'غير معروف', 'detained', 'missing', 'released', 'deceased', 'forcibly_disappeared', 'unknown'] as const;
+export const VALID_STATUSES = ['معتقل', 'مفقود', 'محرر', 'متوفى', 'متوفي', 'مغيب قسراً', 'غير معروف', 'detained', 'missing', 'released', 'deceased', 'forcibly_disappeared', 'unknown'] as const;
 
 // Mapping of various input formats to standardized values
 export const GENDER_MAPPING: Record<string, DetaineeGender> = {
@@ -94,7 +94,7 @@ export const GENDER_MAPPING: Record<string, DetaineeGender> = {
 export const STATUS_MAPPING: Record<string, DetaineeStatus> = {
   'معتقل': 'معتقل',
   'مفقود': 'مفقود',
-  'مطلق سراح': 'مطلق سراح',
+  'محرر': 'محرر',
   'متوفى': 'متوفى',
   'متوفي': 'متوفى',
   'مغيب قسرا': 'مغيب قسراً',
@@ -102,7 +102,7 @@ export const STATUS_MAPPING: Record<string, DetaineeStatus> = {
   'غير معروف': 'غير معروف',
   'detained': 'معتقل',
   'missing': 'مفقود',
-  'released': 'مطلق سراح',
+  'released': 'محرر',
   'deceased': 'متوفى',
   'forcibly_disappeared': 'مغيب قسراً',
   'unknown': 'غير معروف'
@@ -129,7 +129,7 @@ export function validateStatus(status: string): DetaineeStatus {
   const mappedStatus = STATUS_MAPPING[normalizedStatus];
   
   if (!mappedStatus) {
-    throw new Error(`قيمة الحالة غير صالحة / Invalid status: ${status}. يجب أن تكون / Must be one of: معتقل، مفقود، مطلق سراح، متوفى، مغيب قسراً، غير معروف`);
+    throw new Error(`قيمة الحالة غير صالحة / Invalid status: ${status}. يجب أن تكون / Must be one of: معتقل، مفقود، محرر، متوفى، مغيب قسراً، غير معروف`);
   }
   
   return mappedStatus;
@@ -274,7 +274,7 @@ export function validateRecord(record: Record<string, string>): ValidationResult
   try {
     validateStatus(record.status);
   } catch {
-    errors.push('الحالة يجب أن تكون أحد الخيارات التالية: معتقل، مفقود، مطلق سراح، متوفى، مغيب قسراً، غير معروف');
+    errors.push('الحالة يجب أن تكون أحد الخيارات التالية: معتقل، مفقود، محرر، متوفى، مغيب قسراً، غير معروف');
   }
 
   // Validate gender

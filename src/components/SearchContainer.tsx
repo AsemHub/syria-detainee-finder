@@ -53,7 +53,7 @@ interface SearchState {
 const STATUS_MAP = {
     'معتقل': 'معتقل',
     'مفقود': 'مفقود',
-    'مطلق سراح': 'مطلق سراح',
+    'محرر': 'محرر',
     'متوفى': 'متوفى',
     'مغيب قسراً': 'مغيب قسراً',
     'غير معروف': 'غير معروف',
@@ -87,7 +87,7 @@ function getStatusVariant(status: string | null): "default" | "secondary" | "suc
             return 'warning'; // Use same variant for both
         case 'مفقود':
             return 'secondary';
-        case 'مطلق سراح':
+        case 'محرر':
             return 'success';
         case 'متوفى':
             return 'deceased';

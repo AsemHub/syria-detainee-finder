@@ -52,7 +52,7 @@ const submitSchema = z.object({
   ])
     .nullable()
     .optional(),
-  status: z.enum(["معتقل", "مفقود", "مطلق سراح", "متوفى", "مغيب قسراً", "غير معروف"] as const),
+  status: z.enum(["معتقل", "مفقود", "محرر", "متوفى", "مغيب قسراً", "غير معروف"] as const),
   gender: z.enum(["ذكر", "أنثى", "غير معروف"] as const),
   contact_info: z.string()
     .min(2, "Contact info must be at least 2 characters")

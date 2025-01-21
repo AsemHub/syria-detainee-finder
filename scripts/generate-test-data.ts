@@ -107,7 +107,7 @@ function generateTestDetainee(): TestDetainee {
     physical_description: getRandomElement(physicalDescriptions),
     age_at_detention: Math.random() > 0.1 ? Math.floor(Math.random() * 50) + 15 : null, // Ages 15-65
     gender: getRandomElement(['ذكر', 'أنثى' , 'غير معروف'] as DetaineeGender[]),
-    status: getRandomElement(['معتقل', 'مفقود', 'مطلق سراح', 'متوفى', 'غير معروف'] as DetaineeStatus[]),
+    status: getRandomElement(['معتقل', 'مفقود', 'محرر', 'متوفى', 'غير معروف'] as DetaineeStatus[]),
     additional_info: getRandomElement(additionalInfos)
   };
 }
