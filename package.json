@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "A humanitarian web application to help locate missing Syrian detainees and reunite families",
+  "license": "MIT",
+  "author": "Syrian Detainee Finder Team",
   "type": "module",
   "scripts": {
     "dev": "next dev",

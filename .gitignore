@@ -40,8 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Documentation
-/docs
-uploadForm.md
+# Test files
 public/test-validation.csv
 public/validation-test.csv
+uploadForm.md
