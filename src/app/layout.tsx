@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/Navbar";
 import { Metadata } from "next"
 import { IBM_Plex_Sans_Arabic } from "next/font/google"
+import { Analytics } from '@vercel/analytics/react';
 
 // Import styles in correct order
 import "./globals.css";
@@ -37,6 +38,7 @@ export default function RootLayout({
             <Navbar />
             <div className="flex-1">{children}</div>
             <Toaster />
+            <Analytics />
           </div>
         </NextThemeProvider>
       </body>

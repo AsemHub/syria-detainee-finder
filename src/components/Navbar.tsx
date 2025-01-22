@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Menu, X } from "./icons";
 import { useTheme } from "next-themes";
 import { Button } from "./ui/button";
-import { MoonIcon, SunIcon } from "lucide-react";
+import { MoonIcon, SunIcon, SearchIcon } from "lucide-react";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -41,6 +41,13 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+            <Link
+              href="/"
+              className="transition-all hover:text-primary text-foreground flex items-center gap-2"
+            >
+              <SearchIcon className="h-4 w-4" />
+              البحث
+            </Link>
             <Link
               href="/submit"
               className="transition-all hover:text-primary text-foreground"
@@ -82,6 +89,14 @@ export function Navbar() {
         <div className="md:hidden absolute w-full bg-background border-b border-border">
           <nav className="container py-2">
             <div className="flex flex-col space-y-3 text-right">
+              <Link
+                href="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-foreground hover:text-primary transition-all flex items-center justify-end gap-2"
+              >
+                <span>البحث</span>
+                <SearchIcon className="h-5 w-5" />
+              </Link>
               <Link
                 href="/submit"
                 onClick={() => setMobileMenuOpen(false)}
